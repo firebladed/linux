@@ -110,15 +110,6 @@ unsigned long long notrace sched_clock(void)
 }
 NOKPROBE_SYMBOL(sched_clock);
 
-/*
- * Monotonic_clock - returns # of nanoseconds passed since time_init()
- */
-unsigned long long monotonic_clock(void)
-{
-	return sched_clock();
-}
-EXPORT_SYMBOL(monotonic_clock);
-
 static void ext_to_timespec64(unsigned char *clk, struct timespec64 *xt)
 {
 	unsigned long long high, low, rem, sec, nsec;
@@ -310,6 +301,7 @@ void update_vsyscall(struct timekeeper *tk)
 
 	vdso_data->tk_mult = tk->tkr_mono.mult;
 	vdso_data->tk_shift = tk->tkr_mono.shift;
+	vdso_data->hrtimer_res = hrtimer_resolution;
 	smp_wmb();
 	++vdso_data->tb_update_count;
 }

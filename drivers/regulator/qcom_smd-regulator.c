@@ -1,15 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, Sony Mobile Communications AB.
  * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/module.h>
@@ -207,7 +199,7 @@ static const struct regulator_ops rpm_bob_ops = {
 };
 
 static const struct regulator_desc pma8084_hfsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(375000,  0,  95, 12500),
 		REGULATOR_LINEAR_RANGE(1550000, 96, 158, 25000),
 	},
@@ -217,7 +209,7 @@ static const struct regulator_desc pma8084_hfsmps = {
 };
 
 static const struct regulator_desc pma8084_ftsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(350000,  0, 184, 5000),
 		REGULATOR_LINEAR_RANGE(1280000, 185, 261, 10000),
 	},
@@ -227,7 +219,7 @@ static const struct regulator_desc pma8084_ftsmps = {
 };
 
 static const struct regulator_desc pma8084_pldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE( 750000,  0,  63, 12500),
 		REGULATOR_LINEAR_RANGE(1550000, 64, 126, 25000),
 		REGULATOR_LINEAR_RANGE(3100000, 127, 163, 50000),
@@ -238,7 +230,7 @@ static const struct regulator_desc pma8084_pldo = {
 };
 
 static const struct regulator_desc pma8084_nldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(750000, 0, 63, 12500),
 	},
 	.n_linear_ranges = 1,
@@ -251,7 +243,7 @@ static const struct regulator_desc pma8084_switch = {
 };
 
 static const struct regulator_desc pm8x41_hfsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE( 375000,  0,  95, 12500),
 		REGULATOR_LINEAR_RANGE(1575000, 96, 158, 25000),
 	},
@@ -261,7 +253,7 @@ static const struct regulator_desc pm8x41_hfsmps = {
 };
 
 static const struct regulator_desc pm8841_ftsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(350000,  0, 184, 5000),
 		REGULATOR_LINEAR_RANGE(1280000, 185, 261, 10000),
 	},
@@ -271,7 +263,7 @@ static const struct regulator_desc pm8841_ftsmps = {
 };
 
 static const struct regulator_desc pm8941_boost = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(4000000, 0, 30, 50000),
 	},
 	.n_linear_ranges = 1,
@@ -280,7 +272,7 @@ static const struct regulator_desc pm8941_boost = {
 };
 
 static const struct regulator_desc pm8941_pldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE( 750000,  0,  63, 12500),
 		REGULATOR_LINEAR_RANGE(1550000, 64, 126, 25000),
 		REGULATOR_LINEAR_RANGE(3100000, 127, 163, 50000),
@@ -291,7 +283,7 @@ static const struct regulator_desc pm8941_pldo = {
 };
 
 static const struct regulator_desc pm8941_nldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(750000, 0, 63, 12500),
 	},
 	.n_linear_ranges = 1,
@@ -310,7 +302,7 @@ static const struct regulator_desc pm8941_switch = {
 };
 
 static const struct regulator_desc pm8916_pldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(750000, 0, 208, 12500),
 	},
 	.n_linear_ranges = 1,
@@ -319,7 +311,7 @@ static const struct regulator_desc pm8916_pldo = {
 };
 
 static const struct regulator_desc pm8916_nldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(375000, 0, 93, 12500),
 	},
 	.n_linear_ranges = 1,
@@ -328,7 +320,7 @@ static const struct regulator_desc pm8916_nldo = {
 };
 
 static const struct regulator_desc pm8916_buck_lvo_smps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(375000, 0, 95, 12500),
 		REGULATOR_LINEAR_RANGE(750000, 96, 127, 25000),
 	},
@@ -338,7 +330,7 @@ static const struct regulator_desc pm8916_buck_lvo_smps = {
 };
 
 static const struct regulator_desc pm8916_buck_hvo_smps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1550000, 0, 31, 25000),
 	},
 	.n_linear_ranges = 1,
@@ -346,8 +338,65 @@ static const struct regulator_desc pm8916_buck_hvo_smps = {
 	.ops = &rpm_smps_ldo_ops,
 };
 
+static const struct regulator_desc pm8950_hfsmps = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(375000, 0, 95, 12500),
+		REGULATOR_LINEAR_RANGE(1550000, 96, 127, 25000),
+	},
+	.n_linear_ranges = 2,
+	.n_voltages = 128,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pm8950_ftsmps2p5 = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(80000, 0, 255, 5000),
+		REGULATOR_LINEAR_RANGE(160000, 256, 460, 10000),
+	},
+	.n_linear_ranges = 2,
+	.n_voltages = 461,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pm8950_ult_nldo = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(375000, 0, 202, 12500),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 203,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pm8950_ult_pldo = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(1750000, 0, 127, 12500),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 128,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pm8950_pldo_lv = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(1500000, 0, 16, 25000),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 17,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pm8950_pldo = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(975000, 0, 164, 12500),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 165,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+
 static const struct regulator_desc pm8994_hfsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE( 375000,  0,  95, 12500),
 		REGULATOR_LINEAR_RANGE(1550000, 96, 158, 25000),
 	},
@@ -357,7 +406,7 @@ static const struct regulator_desc pm8994_hfsmps = {
 };
 
 static const struct regulator_desc pm8994_ftsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(350000,  0, 199, 5000),
 		REGULATOR_LINEAR_RANGE(700000, 200, 349, 10000),
 	},
@@ -367,7 +416,7 @@ static const struct regulator_desc pm8994_ftsmps = {
 };
 
 static const struct regulator_desc pm8994_nldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(750000, 0, 63, 12500),
 	},
 	.n_linear_ranges = 1,
@@ -376,7 +425,7 @@ static const struct regulator_desc pm8994_nldo = {
 };
 
 static const struct regulator_desc pm8994_pldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE( 750000,  0,  63, 12500),
 		REGULATOR_LINEAR_RANGE(1550000, 64, 126, 25000),
 		REGULATOR_LINEAR_RANGE(3100000, 127, 163, 50000),
@@ -396,8 +445,46 @@ static const struct regulator_desc pm8994_lnldo = {
 	.ops = &rpm_smps_ldo_ops_fixed,
 };
 
+static const struct regulator_desc pmi8994_ftsmps = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(350000,  0, 199, 5000),
+		REGULATOR_LINEAR_RANGE(700000, 200, 349, 10000),
+	},
+	.n_linear_ranges = 2,
+	.n_voltages = 350,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pmi8994_hfsmps = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(350000,  0,  80, 12500),
+		REGULATOR_LINEAR_RANGE(700000, 81, 141, 25000),
+	},
+	.n_linear_ranges = 2,
+	.n_voltages = 142,
+	.ops = &rpm_smps_ldo_ops,
+};
+
+static const struct regulator_desc pmi8994_bby = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(3000000, 0, 44, 50000),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 45,
+	.ops = &rpm_bob_ops,
+};
+
+static const struct regulator_desc pmi8994_boost = {
+	.linear_ranges = (struct linear_range[]) {
+		REGULATOR_LINEAR_RANGE(4000000, 0, 30, 50000),
+	},
+	.n_linear_ranges = 1,
+	.n_voltages = 31,
+	.ops = &rpm_smps_ldo_ops,
+};
+
 static const struct regulator_desc pm8998_ftsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(320000, 0, 258, 4000),
 	},
 	.n_linear_ranges = 1,
@@ -406,7 +493,7 @@ static const struct regulator_desc pm8998_ftsmps = {
 };
 
 static const struct regulator_desc pm8998_hfsmps = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(320000, 0, 215, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -415,7 +502,7 @@ static const struct regulator_desc pm8998_hfsmps = {
 };
 
 static const struct regulator_desc pm8998_nldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(312000, 0, 127, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -424,7 +511,7 @@ static const struct regulator_desc pm8998_nldo = {
 };
 
 static const struct regulator_desc pm8998_pldo = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1664000, 0, 255, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -433,7 +520,7 @@ static const struct regulator_desc pm8998_pldo = {
 };
 
 static const struct regulator_desc pm8998_pldo_lv = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1256000, 0, 127, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -446,7 +533,7 @@ static const struct regulator_desc pm8998_switch = {
 };
 
 static const struct regulator_desc pmi8998_bob = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1824000, 0, 83, 32000),
 	},
 	.n_linear_ranges = 1,
@@ -455,7 +542,7 @@ static const struct regulator_desc pmi8998_bob = {
 };
 
 static const struct regulator_desc pms405_hfsmps3 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(320000, 0, 215, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -464,7 +551,7 @@ static const struct regulator_desc pms405_hfsmps3 = {
 };
 
 static const struct regulator_desc pms405_nldo300 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(312000, 0, 127, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -473,7 +560,7 @@ static const struct regulator_desc pms405_nldo300 = {
 };
 
 static const struct regulator_desc pms405_nldo1200 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(312000, 0, 127, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -482,7 +569,7 @@ static const struct regulator_desc pms405_nldo1200 = {
 };
 
 static const struct regulator_desc pms405_pldo50 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1664000, 0, 128, 16000),
 	},
 	.n_linear_ranges = 1,
@@ -491,7 +578,7 @@ static const struct regulator_desc pms405_pldo50 = {
 };
 
 static const struct regulator_desc pms405_pldo150 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1664000, 0, 128, 16000),
 	},
 	.n_linear_ranges = 1,
@@ -500,7 +587,7 @@ static const struct regulator_desc pms405_pldo150 = {
 };
 
 static const struct regulator_desc pms405_pldo600 = {
-	.linear_ranges = (struct regulator_linear_range[]) {
+	.linear_ranges = (struct linear_range[]) {
 		REGULATOR_LINEAR_RANGE(1256000, 0, 98, 8000),
 	},
 	.n_linear_ranges = 1,
@@ -646,6 +733,40 @@ static const struct rpm_regulator_data rpm_pma8084_regulators[] = {
 	{}
 };
 
+static const struct rpm_regulator_data rpm_pm8950_regulators[] = {
+	{ "s1", QCOM_SMD_RPM_SMPA, 1, &pm8950_hfsmps, "vdd_s1" },
+	{ "s2", QCOM_SMD_RPM_SMPA, 2, &pm8950_hfsmps, "vdd_s2" },
+	{ "s3", QCOM_SMD_RPM_SMPA, 3, &pm8950_hfsmps, "vdd_s3" },
+	{ "s4", QCOM_SMD_RPM_SMPA, 4, &pm8950_hfsmps, "vdd_s4" },
+	{ "s5", QCOM_SMD_RPM_SMPA, 5, &pm8950_ftsmps2p5, "vdd_s5" },
+	{ "s6", QCOM_SMD_RPM_SMPA, 6, &pm8950_hfsmps, "vdd_s6" },
+
+	{ "l1", QCOM_SMD_RPM_LDOA, 1, &pm8950_ult_nldo, "vdd_l1_l19" },
+	{ "l2", QCOM_SMD_RPM_LDOA, 2, &pm8950_ult_nldo, "vdd_l2_l23" },
+	{ "l3", QCOM_SMD_RPM_LDOA, 3, &pm8950_ult_nldo, "vdd_l3" },
+	{ "l4", QCOM_SMD_RPM_LDOA, 4, &pm8950_ult_pldo, "vdd_l4_l5_l6_l7_l16" },
+	{ "l5", QCOM_SMD_RPM_LDOA, 5, &pm8950_pldo_lv, "vdd_l4_l5_l6_l7_l16" },
+	{ "l6", QCOM_SMD_RPM_LDOA, 6, &pm8950_pldo_lv, "vdd_l4_l5_l6_l7_l16" },
+	{ "l7", QCOM_SMD_RPM_LDOA, 7, &pm8950_pldo_lv, "vdd_l4_l5_l6_l7_l16" },
+	{ "l8", QCOM_SMD_RPM_LDOA, 8, &pm8950_ult_pldo, "vdd_l8_l11_l12_l17_l22" },
+	{ "l9", QCOM_SMD_RPM_LDOA, 9, &pm8950_ult_pldo, "vdd_l9_l10_l13_l14_l15_l18" },
+	{ "l10", QCOM_SMD_RPM_LDOA, 10, &pm8950_ult_nldo, "vdd_l9_l10_l13_l14_l15_l18"},
+	{ "l11", QCOM_SMD_RPM_LDOA, 11, &pm8950_ult_pldo, "vdd_l8_l11_l12_l17_l22"},
+	{ "l12", QCOM_SMD_RPM_LDOA, 12, &pm8950_ult_pldo, "vdd_l8_l11_l12_l17_l22"},
+	{ "l13", QCOM_SMD_RPM_LDOA, 13, &pm8950_ult_pldo, "vdd_l9_l10_l13_l14_l15_l18"},
+	{ "l14", QCOM_SMD_RPM_LDOA, 14, &pm8950_ult_pldo, "vdd_l9_l10_l13_l14_l15_l18"},
+	{ "l15", QCOM_SMD_RPM_LDOA, 15, &pm8950_ult_pldo, "vdd_l9_l10_l13_l14_l15_l18"},
+	{ "l16", QCOM_SMD_RPM_LDOA, 16, &pm8950_ult_pldo, "vdd_l4_l5_l6_l7_l16"},
+	{ "l17", QCOM_SMD_RPM_LDOA, 17, &pm8950_ult_pldo, "vdd_l8_l11_l12_l17_l22"},
+	{ "l18", QCOM_SMD_RPM_LDOA, 18, &pm8950_ult_pldo, "vdd_l9_l10_l13_l14_l15_l18"},
+	{ "l19", QCOM_SMD_RPM_LDOA, 18, &pm8950_pldo, "vdd_l1_l19"},
+	{ "l20", QCOM_SMD_RPM_LDOA, 18, &pm8950_pldo, "vdd_l20"},
+	{ "l21", QCOM_SMD_RPM_LDOA, 18, &pm8950_pldo, "vdd_l21"},
+	{ "l22", QCOM_SMD_RPM_LDOA, 18, &pm8950_pldo, "vdd_l8_l11_l12_l17_l22"},
+	{ "l23", QCOM_SMD_RPM_LDOA, 18, &pm8950_pldo, "vdd_l2_l23"},
+	{}
+};
+
 static const struct rpm_regulator_data rpm_pm8994_regulators[] = {
 	{ "s1", QCOM_SMD_RPM_SMPA, 1, &pm8994_ftsmps, "vdd_s1" },
 	{ "s2", QCOM_SMD_RPM_SMPA, 2, &pm8994_ftsmps, "vdd_s2" },
@@ -694,6 +815,14 @@ static const struct rpm_regulator_data rpm_pm8994_regulators[] = {
 	{ "lvs1", QCOM_SMD_RPM_VSA, 1, &pm8994_switch, "vdd_lvs1_2" },
 	{ "lvs2", QCOM_SMD_RPM_VSA, 2, &pm8994_switch, "vdd_lvs1_2" },
 
+	{}
+};
+
+static const struct rpm_regulator_data rpm_pmi8994_regulators[] = {
+	{ "s1", QCOM_SMD_RPM_SMPB, 1, &pmi8994_ftsmps, "vdd_s1" },
+	{ "s2", QCOM_SMD_RPM_SMPB, 2, &pmi8994_hfsmps, "vdd_s2" },
+	{ "s3", QCOM_SMD_RPM_SMPB, 3, &pmi8994_hfsmps, "vdd_s3" },
+	{ "boost-bypass", QCOM_SMD_RPM_BBYB, 1, &pmi8994_bby, "vdd_bst_byp" },
 	{}
 };
 
@@ -775,9 +904,11 @@ static const struct of_device_id rpm_of_match[] = {
 	{ .compatible = "qcom,rpm-pm8841-regulators", .data = &rpm_pm8841_regulators },
 	{ .compatible = "qcom,rpm-pm8916-regulators", .data = &rpm_pm8916_regulators },
 	{ .compatible = "qcom,rpm-pm8941-regulators", .data = &rpm_pm8941_regulators },
+	{ .compatible = "qcom,rpm-pm8950-regulators", .data = &rpm_pm8950_regulators },
 	{ .compatible = "qcom,rpm-pm8994-regulators", .data = &rpm_pm8994_regulators },
 	{ .compatible = "qcom,rpm-pm8998-regulators", .data = &rpm_pm8998_regulators },
 	{ .compatible = "qcom,rpm-pma8084-regulators", .data = &rpm_pma8084_regulators },
+	{ .compatible = "qcom,rpm-pmi8994-regulators", .data = &rpm_pmi8994_regulators },
 	{ .compatible = "qcom,rpm-pmi8998-regulators", .data = &rpm_pmi8998_regulators },
 	{ .compatible = "qcom,rpm-pms405-regulators", .data = &rpm_pms405_regulators },
 	{}
