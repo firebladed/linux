@@ -1,3 +1,15 @@
+*Compare rf69 versions
+
+RFM69CW 	https://www.hoperf.com/data/upload/portal/20190307/RFM69CW-V1.1.pdf
+RFM69HCW	https://www.hoperf.com/data/upload/portal/20190307/RFM69HCW-V1.1.pdf
+RFM69HW		https://www.hoperf.com/data/upload/portal/20190306/RFM69HW-V1.3%20Datasheet.pdf
+RFM69W		https://www.hoperf.com/data/upload/portal/20191105/RFM69%20Specification.pdf
+
+* acpi compatibility
+
+
+
+
 * coding style does not fully comply with the kernel style guide.
 * still TODOs, annotated in the code
 * currently the code introduces new IOCTLs. I'm afraid this is a bad idea.
