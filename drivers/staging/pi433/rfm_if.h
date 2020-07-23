@@ -1,24 +1,23 @@
-/* SPDX-License-Identifier: GPL-2.0+ */
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * include/linux/TODO
+ * userspace interface for rfm69 radio module
  *
- * userspace interface for pi433 radio module
- *
- * Pi433 is a 433MHz radio module for the Raspberry Pi.
- * It is based on the HopeRf Module RFM69CW. Therefore inside of this
+ * rfm69 is a radio module created by HopeRf Module. 
+ * Therefore inside of this
  * driver, you'll find an abstraction of the rf69 chip.
  *
- * If needed, this driver could be extended, to also support other
- * devices, basing on HopeRfs rf69.
  *
- * The driver can also be extended, to support other modules of
- * HopeRf with a similar interace - e. g. RFM69HCW, RFM12, RFM95, ...
+ *
+ *
+ * Based on pi433 Driver by
+ *
  * Copyright (C) 2016 Wolf-Entwicklungen
  *	Marcus Wolf <linux@wolf-entwicklungen.de>
  */
+ 
 
-#ifndef PI433_H
-#define PI433_H
+#ifndef rfm69_H
+#define rfm69_H
 
 #include <linux/types.h>
 #include "rf69_enum.h"
@@ -33,7 +32,7 @@ enum option_on_off {
 /* IOCTL structs and commands */
 
 /**
- * struct pi433_tx_config
+ * struct rfm69_tx_config
  * describes the configuration of the radio module for sending
  * @frequency:
  * @bit_rate:
@@ -46,13 +45,13 @@ enum option_on_off {
  * @repetitions:
  *
  * ATTENTION:
- * If the contents of 'pi433_tx_config' ever change
+ * If the contents of 'rfm69_tx_config' ever change
  * incompatibly, then the ioctl number (see define below) must change.
  *
  * NOTE: struct layout is the same in 64bit and 32bit userspace.
  */
-#define PI433_TX_CFG_IOCTL_NR	0
-struct pi433_tx_cfg {
+#define rfm69_TX_CFG_IOCTL_NR	0
+struct rfm69_tx_cfg {
 	__u32			frequency;
 	__u16			bit_rate;
 	__u32			dev_frequency;
@@ -81,7 +80,7 @@ struct pi433_tx_cfg {
 };
 
 /**
- * struct pi433_rx_config
+ * struct rfm69_rx_config
  * describes the configuration of the radio module for sending
  * @frequency:
  * @bit_rate:
@@ -94,13 +93,13 @@ struct pi433_tx_cfg {
  * @repetitions:
  *
  * ATTENTION:
- * If the contents of 'pi433_rx_config' ever change
+ * If the contents of 'rfm69_rx_config' ever change
  * incompatibly, then the ioctl number (see define below) must change
  *
  * NOTE: struct layout is the same in 64bit and 32bit userspace.
  */
-#define PI433_RX_CFG_IOCTL_NR	1
-struct pi433_rx_cfg {
+#define rfm69_RX_CFG_IOCTL_NR	1
+struct rfm69_rx_cfg {
 	__u32			frequency;
 	__u16			bit_rate;
 	__u32			dev_frequency;
@@ -130,12 +129,12 @@ struct pi433_rx_cfg {
 	__u8			broadcast_address;
 };
 
-#define PI433_IOC_MAGIC			'r'
+#define rfm69_IOC_MAGIC			'r'
 
-#define PI433_IOC_RD_TX_CFG	_IOR(PI433_IOC_MAGIC, PI433_TX_CFG_IOCTL_NR, char[sizeof(struct pi433_tx_cfg)])
-#define PI433_IOC_WR_TX_CFG	_IOW(PI433_IOC_MAGIC, PI433_TX_CFG_IOCTL_NR, char[sizeof(struct pi433_tx_cfg)])
+#define rfm69_IOC_RD_TX_CFG	_IOR(rfm69_IOC_MAGIC, rfm69_TX_CFG_IOCTL_NR, char[sizeof(struct rfm69_tx_cfg)])
+#define rfm69_IOC_WR_TX_CFG	_IOW(rfm69_IOC_MAGIC, rfm69_TX_CFG_IOCTL_NR, char[sizeof(struct rfm69_tx_cfg)])
 
-#define PI433_IOC_RD_RX_CFG	_IOR(PI433_IOC_MAGIC, PI433_RX_CFG_IOCTL_NR, char[sizeof(struct pi433_rx_cfg)])
-#define PI433_IOC_WR_RX_CFG	_IOW(PI433_IOC_MAGIC, PI433_RX_CFG_IOCTL_NR, char[sizeof(struct pi433_rx_cfg)])
+#define rfm69_IOC_RD_RX_CFG	_IOR(rfm69_IOC_MAGIC, rfm69_RX_CFG_IOCTL_NR, char[sizeof(struct rfm69_rx_cfg)])
+#define rfm69_IOC_WR_RX_CFG	_IOW(rfm69_IOC_MAGIC, rfm69_RX_CFG_IOCTL_NR, char[sizeof(struct rfm69_rx_cfg)])
 
-#endif /* PI433_H */
+#endif /* rfm69_H */

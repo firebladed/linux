@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * userspace interface for pi433 radio module
+ * userspace interface for rfm69 radio module
  *
- * Pi433 is a 433MHz radio module for the Raspberry Pi.
- * It is based on the HopeRf Module RFM69CW. Therefore inside of this
+ * rfm69 is a radio module created by HopeRf Module. 
+ * Therefore inside of this
  * driver, you'll find an abstraction of the rf69 chip.
  *
- * If needed, this driver could be extended, to also support other
- * devices, basing on HopeRfs rf69.
  *
- * The driver can also be extended, to support other modules of
- * HopeRf with a similar interace - e. g. RFM69HCW, RFM12, RFM95, ...
+ *
+ *
+ * Based on pi433 Driver by
  *
  * Copyright (C) 2016 Wolf-Entwicklungen
  *	Marcus Wolf <linux@wolf-entwicklungen.de>
  */
+
+
 
 #undef DEBUG
 
@@ -42,19 +43,19 @@
 #include <linux/compat.h>
 #endif
 
-#include "pi433_if.h"
+#include "rfm69_if.h"
 #include "rf69.h"
 
-#define N_PI433_MINORS		BIT(MINORBITS) /*32*/	/* ... up to 256 */
+#define N_rfm69_MINORS		BIT(MINORBITS) /*32*/	/* ... up to 256 */
 #define MAX_MSG_SIZE		900	/* min: FIFO_SIZE! */
 #define MSG_FIFO_SIZE		65536   /* 65536 = 2^16  */
 #define NUM_DIO			2
 
-static dev_t pi433_dev;
-static DEFINE_IDR(pi433_idr);
+static dev_t rfm69_dev;
+static DEFINE_IDR(rfm69_idr);
 static DEFINE_MUTEX(minor_lock); /* Protect idr accesses */
 
-static struct class *pi433_class; /* mainly for udev to create /dev/pi433 */
+static struct class *rfm69_class; /* mainly for udev to create /dev/rfm69 */
 
 /*
  * tx config is instance specific
@@ -64,7 +65,7 @@ static struct class *pi433_class; /* mainly for udev to create /dev/pi433 */
  * rx config is device specific
  * so we have just one rx config, ebedded in device struct
  */
-struct pi433_device {
+struct rfm69_device {
 	/* device handling related values */
 	dev_t			devt;
 	int			minor;
@@ -86,7 +87,7 @@ struct pi433_device {
 	char			buffer[MAX_MSG_SIZE];
 
 	/* rx related values */
-	struct pi433_rx_cfg	rx_cfg;
+	struct rfm69_rx_cfg	rx_cfg;
 	u8			*rx_buffer;
 	unsigned int		rx_buffer_size;
 	u32			rx_bytes_to_drop;
@@ -105,9 +106,9 @@ struct pi433_device {
 	bool			interrupt_rx_allowed;
 };
 
-struct pi433_instance {
-	struct pi433_device	*device;
-	struct pi433_tx_cfg	tx_cfg;
+struct rfm69_instance {
+	struct rfm69_device	*device;
+	struct rfm69_tx_cfg	tx_cfg;
 };
 
 /*-------------------------------------------------------------------------*/
@@ -115,7 +116,7 @@ struct pi433_instance {
 /* GPIO interrupt handlers */
 static irqreturn_t DIO0_irq_handler(int irq, void *dev_id)
 {
-	struct pi433_device *device = dev_id;
+	struct rfm69_device *device = dev_id;
 
 	if (device->irq_state[DIO0] == DIO_PACKET_SENT) {
 		device->free_in_fifo = FIFO_SIZE;
@@ -135,7 +136,7 @@ static irqreturn_t DIO0_irq_handler(int irq, void *dev_id)
 
 static irqreturn_t DIO1_irq_handler(int irq, void *dev_id)
 {
-	struct pi433_device *device = dev_id;
+	struct rfm69_device *device = dev_id;
 
 	if (device->irq_state[DIO1] == DIO_FIFO_NOT_EMPTY_DIO1) {
 		device->free_in_fifo = FIFO_SIZE;
@@ -155,7 +156,7 @@ static irqreturn_t DIO1_irq_handler(int irq, void *dev_id)
 /*-------------------------------------------------------------------------*/
 
 static int
-rf69_set_rx_cfg(struct pi433_device *dev, struct pi433_rx_cfg *rx_cfg)
+rf69_set_rx_cfg(struct rfm69_device *dev, struct rfm69_rx_cfg *rx_cfg)
 {
 	int ret;
 	int payload_length;
@@ -280,7 +281,7 @@ rf69_set_rx_cfg(struct pi433_device *dev, struct pi433_rx_cfg *rx_cfg)
 }
 
 static int
-rf69_set_tx_cfg(struct pi433_device *dev, struct pi433_tx_cfg *tx_cfg)
+rf69_set_tx_cfg(struct rfm69_device *dev, struct rfm69_tx_cfg *tx_cfg)
 {
 	int ret;
 
@@ -360,7 +361,7 @@ rf69_set_tx_cfg(struct pi433_device *dev, struct pi433_tx_cfg *tx_cfg)
 /*-------------------------------------------------------------------------*/
 
 static int
-pi433_start_rx(struct pi433_device *dev)
+rfm69_start_rx(struct rfm69_device *dev)
 {
 	int retval;
 
@@ -401,9 +402,9 @@ pi433_start_rx(struct pi433_device *dev)
 /*-------------------------------------------------------------------------*/
 
 static int
-pi433_receive(void *data)
+rfm69_receive(void *data)
 {
-	struct pi433_device *dev = data;
+	struct rfm69_device *dev = data;
 	struct spi_device *spi = dev->spi;
 	int bytes_to_read, bytes_total;
 	int retval;
@@ -426,7 +427,7 @@ pi433_receive(void *data)
 	dev->rx_bytes_dropped = 0;
 
 	/* setup radio module to listen for something "in the air" */
-	retval = pi433_start_rx(dev);
+	retval = rfm69_start_rx(dev);
 	if (retval)
 		return retval;
 
@@ -553,11 +554,11 @@ abort:
 }
 
 static int
-pi433_tx_thread(void *data)
+rfm69_tx_thread(void *data)
 {
-	struct pi433_device *device = data;
+	struct rfm69_device *device = data;
 	struct spi_device *spi = device->spi;
-	struct pi433_tx_cfg tx_cfg;
+	struct rfm69_tx_cfg tx_cfg;
 	size_t size;
 	bool   rx_interrupted = false;
 	int    position, repetitions;
@@ -749,7 +750,7 @@ pi433_tx_thread(void *data)
 abort:
 			if (rx_interrupted) {
 				rx_interrupted = false;
-				pi433_start_rx(device);
+				rfm69_start_rx(device);
 			}
 			device->tx_active = false;
 			wake_up_interruptible(&device->rx_wait_queue);
@@ -760,10 +761,10 @@ abort:
 /*-------------------------------------------------------------------------*/
 
 static ssize_t
-pi433_read(struct file *filp, char __user *buf, size_t size, loff_t *f_pos)
+rfm69_read(struct file *filp, char __user *buf, size_t size, loff_t *f_pos)
 {
-	struct pi433_instance	*instance;
-	struct pi433_device	*device;
+	struct rfm69_instance	*instance;
+	struct rfm69_device	*device;
 	int			bytes_received;
 	ssize_t			retval;
 
@@ -787,7 +788,7 @@ pi433_read(struct file *filp, char __user *buf, size_t size, loff_t *f_pos)
 	/* start receiving */
 	/* will block until something was received*/
 	device->rx_buffer_size = size;
-	bytes_received = pi433_receive(device);
+	bytes_received = rfm69_receive(device);
 
 	/* release rx */
 	mutex_lock(&device->rx_lock);
@@ -805,11 +806,11 @@ pi433_read(struct file *filp, char __user *buf, size_t size, loff_t *f_pos)
 }
 
 static ssize_t
-pi433_write(struct file *filp, const char __user *buf,
+rfm69_write(struct file *filp, const char __user *buf,
 	    size_t count, loff_t *f_pos)
 {
-	struct pi433_instance	*instance;
-	struct pi433_device	*device;
+	struct rfm69_instance	*instance;
+	struct rfm69_device	*device;
 	int                     retval;
 	unsigned int		required, available, copied;
 
@@ -869,15 +870,15 @@ abort:
 }
 
 static long
-pi433_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+rfm69_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	struct pi433_instance	*instance;
-	struct pi433_device	*device;
-	struct pi433_tx_cfg	tx_cfg;
+	struct rfm69_instance	*instance;
+	struct rfm69_device	*device;
+	struct rfm69_tx_cfg	tx_cfg;
 	void __user *argp = (void __user *)arg;
 
 	/* Check type and command number */
-	if (_IOC_TYPE(cmd) != PI433_IOC_MAGIC)
+	if (_IOC_TYPE(cmd) != rfm69_IOC_MAGIC)
 		return -ENOTTY;
 
 	instance = filp->private_data;
@@ -887,24 +888,24 @@ pi433_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -ESHUTDOWN;
 
 	switch (cmd) {
-	case PI433_IOC_RD_TX_CFG:
+	case rfm69_IOC_RD_TX_CFG:
 		if (copy_to_user(argp, &instance->tx_cfg,
-				 sizeof(struct pi433_tx_cfg)))
+				 sizeof(struct rfm69_tx_cfg)))
 			return -EFAULT;
 		break;
-	case PI433_IOC_WR_TX_CFG:
-		if (copy_from_user(&tx_cfg, argp, sizeof(struct pi433_tx_cfg)))
+	case rfm69_IOC_WR_TX_CFG:
+		if (copy_from_user(&tx_cfg, argp, sizeof(struct rfm69_tx_cfg)))
 			return -EFAULT;
 		mutex_lock(&device->tx_fifo_lock);
-		memcpy(&instance->tx_cfg, &tx_cfg, sizeof(struct pi433_tx_cfg));
+		memcpy(&instance->tx_cfg, &tx_cfg, sizeof(struct rfm69_tx_cfg));
 		mutex_unlock(&device->tx_fifo_lock);
 		break;
-	case PI433_IOC_RD_RX_CFG:
+	case rfm69_IOC_RD_RX_CFG:
 		if (copy_to_user(argp, &device->rx_cfg,
-				 sizeof(struct pi433_rx_cfg)))
+				 sizeof(struct rfm69_rx_cfg)))
 			return -EFAULT;
 		break;
-	case PI433_IOC_WR_RX_CFG:
+	case rfm69_IOC_WR_RX_CFG:
 		mutex_lock(&device->rx_lock);
 
 		/* during pendig read request, change of config not allowed */
@@ -914,7 +915,7 @@ pi433_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		if (copy_from_user(&device->rx_cfg, argp,
-				   sizeof(struct pi433_rx_cfg))) {
+				   sizeof(struct rfm69_rx_cfg))) {
 			mutex_unlock(&device->rx_lock);
 			return -EFAULT;
 		}
@@ -930,13 +931,13 @@ pi433_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 /*-------------------------------------------------------------------------*/
 
-static int pi433_open(struct inode *inode, struct file *filp)
+static int rfm69_open(struct inode *inode, struct file *filp)
 {
-	struct pi433_device	*device;
-	struct pi433_instance	*instance;
+	struct rfm69_device	*device;
+	struct rfm69_instance	*instance;
 
 	mutex_lock(&minor_lock);
-	device = idr_find(&pi433_idr, iminor(inode));
+	device = idr_find(&rfm69_idr, iminor(inode));
 	mutex_unlock(&minor_lock);
 	if (!device) {
 		pr_debug("device: minor %d unknown.\n", iminor(inode));
@@ -959,9 +960,9 @@ static int pi433_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int pi433_release(struct inode *inode, struct file *filp)
+static int rfm69_release(struct inode *inode, struct file *filp)
 {
-	struct pi433_instance	*instance;
+	struct rfm69_instance	*instance;
 
 	instance = filp->private_data;
 	kfree(instance);
@@ -972,7 +973,7 @@ static int pi433_release(struct inode *inode, struct file *filp)
 
 /*-------------------------------------------------------------------------*/
 
-static int setup_gpio(struct pi433_device *device)
+static int setup_gpio(struct rfm69_device *device)
 {
 	char	name[5];
 	int	retval;
@@ -1034,7 +1035,7 @@ static int setup_gpio(struct pi433_device *device)
 	return 0;
 }
 
-static void free_gpio(struct pi433_device *device)
+static void free_gpio(struct rfm69_device *device)
 {
 	int i;
 
@@ -1048,53 +1049,53 @@ static void free_gpio(struct pi433_device *device)
 	}
 }
 
-static int pi433_get_minor(struct pi433_device *device)
+static int rfm69_get_minor(struct rfm69_device *device)
 {
 	int retval = -ENOMEM;
 
 	mutex_lock(&minor_lock);
-	retval = idr_alloc(&pi433_idr, device, 0, N_PI433_MINORS, GFP_KERNEL);
+	retval = idr_alloc(&rfm69_idr, device, 0, N_rfm69_MINORS, GFP_KERNEL);
 	if (retval >= 0) {
 		device->minor = retval;
 		retval = 0;
 	} else if (retval == -ENOSPC) {
-		dev_err(&device->spi->dev, "too many pi433 devices\n");
+		dev_err(&device->spi->dev, "too many rfm69 devices\n");
 		retval = -EINVAL;
 	}
 	mutex_unlock(&minor_lock);
 	return retval;
 }
 
-static void pi433_free_minor(struct pi433_device *dev)
+static void rfm69_free_minor(struct rfm69_device *dev)
 {
 	mutex_lock(&minor_lock);
-	idr_remove(&pi433_idr, dev->minor);
+	idr_remove(&rfm69_idr, dev->minor);
 	mutex_unlock(&minor_lock);
 }
 
 /*-------------------------------------------------------------------------*/
 
-static const struct file_operations pi433_fops = {
+static const struct file_operations rfm69_fops = {
 	.owner =	THIS_MODULE,
 	/*
 	 * REVISIT switch to aio primitives, so that userspace
 	 * gets more complete API coverage.  It'll simplify things
 	 * too, except for the locking.
 	 */
-	.write =	pi433_write,
-	.read =		pi433_read,
-	.unlocked_ioctl = pi433_ioctl,
+	.write =	rfm69_write,
+	.read =		rfm69_read,
+	.unlocked_ioctl = rfm69_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
-	.open =		pi433_open,
-	.release =	pi433_release,
+	.open =		rfm69_open,
+	.release =	rfm69_release,
 	.llseek =	no_llseek,
 };
 
 /*-------------------------------------------------------------------------*/
 
-static int pi433_probe(struct spi_device *spi)
+static int rfm69_probe(struct spi_device *spi)
 {
-	struct pi433_device	*device;
+	struct rfm69_device	*device;
 	int			retval;
 
 	/* setup spi parameters */
@@ -1122,7 +1123,7 @@ static int pi433_probe(struct spi_device *spi)
 
 	switch (retval) {
 	case 0x24:
-		dev_dbg(&spi->dev, "found pi433 (ver. 0x%x)", retval);
+		dev_dbg(&spi->dev, "found rfm69 (ver. 0x%x)", retval);
 		break;
 	default:
 		dev_dbg(&spi->dev, "unknown chip version: 0x%x", retval);
@@ -1190,35 +1191,35 @@ static int pi433_probe(struct spi_device *spi)
 		goto minor_failed;
 
 	/* determ minor number */
-	retval = pi433_get_minor(device);
+	retval = rfm69_get_minor(device);
 	if (retval) {
 		dev_dbg(&spi->dev, "get of minor number failed");
 		goto minor_failed;
 	}
 
 	/* create device */
-	device->devt = MKDEV(MAJOR(pi433_dev), device->minor);
-	device->dev = device_create(pi433_class,
+	device->devt = MKDEV(MAJOR(rfm69_dev), device->minor);
+	device->dev = device_create(rfm69_class,
 				    &spi->dev,
 				    device->devt,
 				    device,
-				    "pi433.%d",
+				    "rfm69.%d",
 				    device->minor);
 	if (IS_ERR(device->dev)) {
-		pr_err("pi433: device register failed\n");
+		pr_err("rfm69: device register failed\n");
 		retval = PTR_ERR(device->dev);
 		goto device_create_failed;
 	} else {
 		dev_dbg(device->dev,
 			"created device for major %d, minor %d\n",
-			MAJOR(pi433_dev),
+			MAJOR(rfm69_dev),
 			device->minor);
 	}
 
 	/* start tx thread */
-	device->tx_task_struct = kthread_run(pi433_tx_thread,
+	device->tx_task_struct = kthread_run(rfm69_tx_thread,
 					     device,
-					     "pi433.%d_tx_task",
+					     "rfm69.%d_tx_task",
 					     device->minor);
 	if (IS_ERR(device->tx_task_struct)) {
 		dev_dbg(device->dev, "start of send thread failed");
@@ -1234,7 +1235,7 @@ static int pi433_probe(struct spi_device *spi)
 		goto cdev_failed;
 	}
 	device->cdev->owner = THIS_MODULE;
-	cdev_init(device->cdev, &pi433_fops);
+	cdev_init(device->cdev, &rfm69_fops);
 	retval = cdev_add(device->cdev, device->devt, 1);
 	if (retval) {
 		dev_dbg(device->dev, "register of cdev failed");
@@ -1251,9 +1252,9 @@ del_cdev:
 cdev_failed:
 	kthread_stop(device->tx_task_struct);
 send_thread_failed:
-	device_destroy(pi433_class, device->devt);
+	device_destroy(rfm69_class, device->devt);
 device_create_failed:
-	pi433_free_minor(device);
+	rfm69_free_minor(device);
 minor_failed:
 	free_gpio(device);
 GPIO_failed:
@@ -1264,9 +1265,9 @@ RX_failed:
 	return retval;
 }
 
-static int pi433_remove(struct spi_device *spi)
+static int rfm69_remove(struct spi_device *spi)
 {
-	struct pi433_device	*device = spi_get_drvdata(spi);
+	struct rfm69_device	*device = spi_get_drvdata(spi);
 
 	/* free GPIOs */
 	free_gpio(device);
@@ -1276,11 +1277,11 @@ static int pi433_remove(struct spi_device *spi)
 
 	kthread_stop(device->tx_task_struct);
 
-	device_destroy(pi433_class, device->devt);
+	device_destroy(rfm69_class, device->devt);
 
 	cdev_del(device->cdev);
 
-	pi433_free_minor(device);
+	rfm69_free_minor(device);
 
 	kfree(device->rx_buffer);
 	kfree(device);
@@ -1288,21 +1289,21 @@ static int pi433_remove(struct spi_device *spi)
 	return 0;
 }
 
-static const struct of_device_id pi433_dt_ids[] = {
-	{ .compatible = "Smarthome-Wolf,pi433" },
+static const struct of_device_id rfm69_dt_ids[] = {
+	{ .compatible = "Smarthome-Wolf,rfm69" },
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, pi433_dt_ids);
+MODULE_DEVICE_TABLE(of, rfm69_dt_ids);
 
-static struct spi_driver pi433_spi_driver = {
+static struct spi_driver rfm69_spi_driver = {
 	.driver = {
-		.name =		"pi433",
+		.name =		"rfm69",
 		.owner =	THIS_MODULE,
-		.of_match_table = of_match_ptr(pi433_dt_ids),
+		.of_match_table = of_match_ptr(rfm69_dt_ids),
 	},
-	.probe =	pi433_probe,
-	.remove =	pi433_remove,
+	.probe =	rfm69_probe,
+	.remove =	rfm69_remove,
 
 	/*
 	 * NOTE:  suspend/resume methods are not necessary here.
@@ -1314,7 +1315,7 @@ static struct spi_driver pi433_spi_driver = {
 
 /*-------------------------------------------------------------------------*/
 
-static int __init pi433_init(void)
+static int __init rfm69_init(void)
 {
 	int status;
 
@@ -1330,38 +1331,38 @@ static int __init pi433_init(void)
 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
 	 * Last, register the driver which manages those device numbers.
 	 */
-	status = alloc_chrdev_region(&pi433_dev, 0, N_PI433_MINORS, "pi433");
+	status = alloc_chrdev_region(&rfm69_dev, 0, N_rfm69_MINORS, "rfm69");
 	if (status < 0)
 		return status;
 
-	pi433_class = class_create(THIS_MODULE, "pi433");
-	if (IS_ERR(pi433_class)) {
-		unregister_chrdev(MAJOR(pi433_dev),
-				  pi433_spi_driver.driver.name);
-		return PTR_ERR(pi433_class);
+	rfm69_class = class_create(THIS_MODULE, "rfm69");
+	if (IS_ERR(rfm69_class)) {
+		unregister_chrdev(MAJOR(rfm69_dev),
+				  rfm69_spi_driver.driver.name);
+		return PTR_ERR(rfm69_class);
 	}
 
-	status = spi_register_driver(&pi433_spi_driver);
+	status = spi_register_driver(&rfm69_spi_driver);
 	if (status < 0) {
-		class_destroy(pi433_class);
-		unregister_chrdev(MAJOR(pi433_dev),
-				  pi433_spi_driver.driver.name);
+		class_destroy(rfm69_class);
+		unregister_chrdev(MAJOR(rfm69_dev),
+				  rfm69_spi_driver.driver.name);
 	}
 
 	return status;
 }
 
-module_init(pi433_init);
+module_init(rfm69_init);
 
-static void __exit pi433_exit(void)
+static void __exit rfm69_exit(void)
 {
-	spi_unregister_driver(&pi433_spi_driver);
-	class_destroy(pi433_class);
-	unregister_chrdev(MAJOR(pi433_dev), pi433_spi_driver.driver.name);
+	spi_unregister_driver(&rfm69_spi_driver);
+	class_destroy(rfm69_class);
+	unregister_chrdev(MAJOR(rfm69_dev), rfm69_spi_driver.driver.name);
 }
-module_exit(pi433_exit);
+module_exit(rfm69_exit);
 
 MODULE_AUTHOR("Marcus Wolf, <linux@wolf-entwicklungen.de>");
-MODULE_DESCRIPTION("Driver for Pi433");
+MODULE_DESCRIPTION("Driver for rfm69");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("spi:pi433");
+MODULE_ALIAS("spi:rfm69");

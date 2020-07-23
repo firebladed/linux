@@ -333,11 +333,37 @@
 #define  DIO4								4
 #define  DIO5								5
 
+/* DIO Mapping values (continuous mode) */
+#define DIO_CON_DIO0_MODE_READY				0x03
+#define DIO_CON_DIO0_PLL_LOCK				0x00
+#define DIO_CON_DIO0_SYNC_ADDRESS			0x00
+#define DIO_CON_DIO0_TIMEOUT				0x01
+#define DIO_CON_DIO0_RSSI					Ox02
+#define DIO_CON_DIO0_TX_READY				0x01
+#define DIO_CON_DIO1_PLL_LOCK				0x03
+#define DIO_CON_DIO1_DCLK					0x00
+#define DIO_CON_DIO1_RX_READY				0x01
+#define DIO_CON_DIO1_SYNC_ADDRESS			0x03
+#define DIO_CON_DIO1_TX_READY				0x01
+//DIO2 Setting ignored in continuous mode
+#define DIO_CON_DIO3_AUTO_MODE				0x02
+#define DIO_CON_DIO3_RSSI					0x00
+#define DIO_CON_DIO3_RX_READY				0x01
+#define DIO_CON_DIO3_TIMEOUT				0x03
+#define DIO_CON_DIO4_PLL_LOCK				0x11
+#define DIO_CON_DIO4_TIMEOUT				0x00
+#define DIO_CON_DIO4_RX_READY				0x01
+#define DIO_CON_DIO4_SYNC_ADDRESS			0x02
+
+
+
+
 /* DIO Mapping values (packet mode) */
 #define  DIO_MODE_READY_DIO4				0x00
 #define  DIO_MODE_READY_DIO5				0x03
 #define  DIO_CLK_OUT						0x00
 #define  DIO_DATA							0x01
+
 #define  DIO_TIMEOUT_DIO1					0x03
 #define  DIO_TIMEOUT_DIO4					0x00
 #define  DIO_RSSI_DIO0						0x03
