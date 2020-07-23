@@ -5,7 +5,23 @@ RFM69HCW	https://www.hoperf.com/data/upload/portal/20190307/RFM69HCW-V1.1.pdf
 RFM69HW		https://www.hoperf.com/data/upload/portal/20190306/RFM69HW-V1.3%20Datasheet.pdf
 RFM69W		https://www.hoperf.com/data/upload/portal/20191105/RFM69%20Specification.pdf
 
+* Make more generic to RF69 chips seperate/remove pi443 specifics
+* DIO Pins Mapping Configuration (optional pins)
+* Add Alternate Frequency Support
+* Detect? and support all module frequency versions (specify in overlay/acpi?) 
+	*RFM69xxx-315S2 - 315MHz band
+	*RFM69xxx-433S2 - 433MHz band
+	*RFM69xxx-868S2 - 868MHz band
+	*RFM69xxx-915S2 - 915MHz band
+* add compatible strings for each chip/baseband combination 
+
+
+* Add support for Continuous Mode
+
+
+
 * acpi compatibility
+
 
 
 
