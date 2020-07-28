@@ -14,19 +14,19 @@ RFM69W		https://www.hoperf.com/data/upload/portal/20191105/RFM69%20Specification
 	*RFM69xxx-868S2 - 868MHz band
 	*RFM69xxx-915S2 - 915MHz band
 * add compatible strings for each chip/baseband combination if auto detection not possible
-	hoperf,rfm69cw-315		#315MHZ 
+	hoperf,rfm69cw-315		#315MHZ,missing DIO4 
 	hoperf,frm69hcw-315		#315MHZ,High Power 
 	hoperf,rfm69hw-315		#315MHZ,High Power
 	hoperf,rfm69w-315		#315MHZ 
-	hoperf,rfm69cw-433		#433MHZ 
+	hoperf,rfm69cw-433		#433MHZ,missing DIO4 
 	hoperf,frm69hcw-433		#433MHZ,High Power
 	hoperf,rfm69hw-433		#433MHZ,High Power
 	hoperf,rfm69w-433		#433MHZ
-	hoperf,rfm69cw-868		#868MHZ
+	hoperf,rfm69cw-868		#868MHZ,missing DIO4
 	hoperf,frm69hcw-868		#868MHZ,High Power
 	hoperf,rfm69hw-868		#868MHZ,High Power
 	hoperf,rfm69w-868		#868MHZ
-	hoperf,rfm69cw-915		#915MHZ
+	hoperf,rfm69cw-915		#915MHZ,missing DIO4
 	hoperf,frm69hcw-915		#915MHZ,High Power
 	hoperf,rfm69hw-915		#915MHZ,High Power
 	hoperf,rfm69w-915		#915MHZ
