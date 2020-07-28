@@ -1333,11 +1333,11 @@ enum rf69_type {
 // structure to provide rfm69 chip varient data to driver
 struct chip_desc {
 
-	u32 freq_min;
-	u32 freq_base;
-	u32 freq_max;
+	u32 freq_min; // min frequency Hz
+	u32 freq_base; // base frequency Hz
+	u32 freq_max; // max frequency Hz
 	u8 pins_io; // binary io pinmap e.g dio4 (of 0-5) missing on rfm59cw
-	bool power_amp;
+	bool power_amp; // power amplifier present
 };
 
 
@@ -1604,7 +1604,8 @@ static void __exit rfm69_exit(void)
 }
 module_exit(rfm69_exit);
 
+MODULE_AUTHOR("Christopher Tyerman,<linuxkernel@firebladeautomationsystems.co.uk>"
 MODULE_AUTHOR("Marcus Wolf, <linux@wolf-entwicklungen.de>");
-MODULE_DESCRIPTION("Driver for rfm69");
+MODULE_DESCRIPTION("Driver for hope rfm69 radio modules ");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("spi:rfm69");
