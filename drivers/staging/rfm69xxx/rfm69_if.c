@@ -1337,6 +1337,7 @@ struct chip_desc {
 	u32 freq_base;
 	u32 freq_max;
 	u8 pins_io; // binary io pinmap e.g dio4 (of 0-5) missing on rfm59cw
+	bool power_amp;
 };
 
 
@@ -1348,66 +1349,77 @@ static const struct chip_desc chips[] = {
 		.freq_base = 315000000,
 		.freq_max = 340000000,
 		.pins_io = 0x2F,
+		.power_amp = 0,
 	},
 	[rfm69cw_433] = {
 		.freq_min = 424000000,
 		.freq_base = 433000000,
 		.freq_max = 510000000,
 		.pins_io = 0x2F,
+		.power_amp = 0,
 	},
 	[rfm69cw_868] = {
 		.freq_min = 862000000,
 		.freq_base = 868000000,
 		.freq_max = 890000000,
 		.pins_io = 0x2F,
+		.power_amp = 0,
 	},
 	[rfm69cw_915] = {
 		.freq_min = 890000000,
 		.freq_base = 915000000,
 		.freq_max = 1020000000,
 		.pins_io = 0x2F,
+		.power_amp = 0,
 	},
 	[rfm69hcw_315] = {
 		.freq_min = 290000000,
 		.freq_base = 315000000,
 		.freq_max = 340000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hcw_433] = {
 		.freq_min = 424000000,
 		.freq_base = 433000000,
 		.freq_max = 510000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hcw_868] = {
 		.freq_min = 862000000,
 		.freq_base = 868000000,
 		.freq_max = 890000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hcw_915] = {
 		.freq_min = 890000000,
 		.freq_base = 915000000,
 		.freq_max = 1020000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hw_315] = {
 		.freq_min = 290000000,
 		.freq_base = 315000000,
 		.freq_max = 340000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hw_433] = {
 		.freq_min = 424000000,
 		.freq_base = 433000000,
 		.freq_max = 510000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hw_868] = {
 		.freq_min = 862000000,
 		.freq_base = 868000000,
 		.freq_max = 890000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69hw_915] = {
 		.freq_min = 890000000,
@@ -1420,24 +1432,28 @@ static const struct chip_desc chips[] = {
 		.freq_base = 315000000,
 		.freq_max = 340000000,
 		.pins_io = 0x3F,
+		.power_amp = 1,
 	},
 	[rfm69w_433] = {
 		.freq_min = 424000000,
 		.freq_base = 433000000,
 		.freq_max = 510000000,
 		.pins_io = 0x3F,
+		.power_amp = 0,
 	},
 	[rfm69w_868] = {
 		.freq_min = 862000000,
 		.freq_base = 868000000,
 		.freq_max = 890000000,
 		.pins_io = 0x3F,
+		.power_amp = 0,
 	},
 	[rfm69w_915] = {
 		.freq_min = 890000000,
 		.freq_base = 915000000,
 		.freq_max = 1020000000,
 		.pins_io = 0x3F,
+		.power_amp = 0,
 	},
 }
 
