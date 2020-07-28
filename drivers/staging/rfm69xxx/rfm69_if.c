@@ -1289,21 +1289,247 @@ static int rfm69_remove(struct spi_device *spi)
 	return 0;
 }
 
-static const struct of_device_id rfm69_dt_ids[] = {
-	{ .compatible = "Smarthome-Wolf,rfm69" },
+/*
+	hoperf,rfm69cw-315		#315MHZ,missing DIO4 
+	hoperf,frm69hcw-315		#315MHZ,High Power 
+	hoperf,rfm69hw-315		#315MHZ,High Power
+	hoperf,rfm69w-315		#315MHZ 
+	hoperf,rfm69cw-433		#433MHZ,missing DIO4 
+	hoperf,frm69hcw-433		#433MHZ,High Power
+	hoperf,rfm69hw-433		#433MHZ,High Power
+	hoperf,rfm69w-433		#433MHZ
+	hoperf,rfm69cw-868		#868MHZ,missing DIO4
+	hoperf,frm69hcw-868		#868MHZ,High Power
+	hoperf,rfm69hw-868		#868MHZ,High Power
+	hoperf,rfm69w-868		#868MHZ
+	hoperf,rfm69cw-915		#915MHZ,missing DIO4
+	hoperf,frm69hcw-915		#915MHZ,High Power
+	hoperf,rfm69hw-915		#915MHZ,High Power
+	hoperf,rfm69w-915		#915MHZ
+*/
+
+
+// list of chip varients
+enum rf69_type {
+	rfm69_cw_315,
+	rfm69_cw_433,
+	rfm69_cw_868,
+	rfm69_cw_915,
+	rfm69_hcw_315,
+	rfm69_hcw_433,
+	rfm69_hcw_868,
+	rfm69_hcw_915,
+	rfm69_hw_315,
+	rfm69_hw_433,
+	rfm69_hw_868,
+	rfm69_hw_915,
+	rfm69_w_315,
+	rfm69_w_433,
+	rfm69_w_868,
+	rfm69_w_915,
+
+};
+
+// structure to provide rfm69 chip varient data to driver
+struct chip_desc {
+
+	u32 freq_min;
+	u32 freq_base;
+	u32 freq_max;
+	u8 pins_io; // binary io pinmap e.g dio4 (of 0-5) missing on rfm59cw
+};
+
+
+
+// array of chip varients
+static const struct chip_desc chips[] = {
+	[rfm69cw_315] = {
+		.freq_min = 290000000,
+		.freq_base = 315000000,
+		.freq_max = 340000000,
+		.pins_io = 0x2F,
+	},
+	[rfm69cw_433] = {
+		.freq_min = 424000000,
+		.freq_base = 433000000,
+		.freq_max = 510000000,
+		.pins_io = 0x2F,
+	},
+	[rfm69cw_868] = {
+		.freq_min = 862000000,
+		.freq_base = 868000000,
+		.freq_max = 890000000,
+		.pins_io = 0x2F,
+	},
+	[rfm69cw_915] = {
+		.freq_min = 890000000,
+		.freq_base = 915000000,
+		.freq_max = 1020000000,
+		.pins_io = 0x2F,
+	},
+	[rfm69hcw_315] = {
+		.freq_min = 290000000,
+		.freq_base = 315000000,
+		.freq_max = 340000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hcw_433] = {
+		.freq_min = 424000000,
+		.freq_base = 433000000,
+		.freq_max = 510000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hcw_868] = {
+		.freq_min = 862000000,
+		.freq_base = 868000000,
+		.freq_max = 890000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hcw_915] = {
+		.freq_min = 890000000,
+		.freq_base = 915000000,
+		.freq_max = 1020000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hw_315] = {
+		.freq_min = 290000000,
+		.freq_base = 315000000,
+		.freq_max = 340000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hw_433] = {
+		.freq_min = 424000000,
+		.freq_base = 433000000,
+		.freq_max = 510000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hw_868] = {
+		.freq_min = 862000000,
+		.freq_base = 868000000,
+		.freq_max = 890000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69hw_915] = {
+		.freq_min = 890000000,
+		.freq_base = 915000000,
+		.freq_max = 1020000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69w_315] = {
+		.freq_min = 290000000,
+		.freq_base = 315000000,
+		.freq_max = 340000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69w_433] = {
+		.freq_min = 424000000,
+		.freq_base = 433000000,
+		.freq_max = 510000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69w_868] = {
+		.freq_min = 862000000,
+		.freq_base = 868000000,
+		.freq_max = 890000000,
+		.pins_io = 0x3F,
+	},
+	[rfm69w_915] = {
+		.freq_min = 890000000,
+		.freq_base = 915000000,
+		.freq_max = 1020000000,
+		.pins_io = 0x3F,
+	},
+}
+
+
+static const struct platform_device_id rfm68_dt_ids[] = {
+	{
+		.name		= "rfm69cw-315",
+		.driver_data	= rfm69cw_315,
+	}, {
+		.name		= "rfm69cw-433",
+		.driver_data	= rfm69cw_433,
+	}, {
+		.name		= "rfm69cw-868",
+		.driver_data	= rfm69cw_868,
+	}, {
+		.name		= "rfm69cw-915",
+		.driver_data	= rfm69cw_915,
+	}, {
+		.name		= "rfm69hcw-315",
+		.driver_data	= rfm69hcw_315,
+	}, {
+		.name		= "rfm69hcw-433",
+		.driver_data	= rfm69hcw_433,
+	}, {
+		.name		= "rfm69hcw-868",
+		.driver_data	= rfm69hcw_868,
+	}, {
+		.name		= "rfm69hcw-915",
+		.driver_data	= rfm69hcw_915,
+	}, {
+		.name		= "rfm69hw-315",
+		.driver_data	= rfm69hw_315,
+	}, {
+		.name		= "rfm69hw-433",
+		.driver_data	= rfm69hw_433,
+	}, {
+		.name		= "rfm69hw-868",
+		.driver_data	= rfm69hw_868,
+	}, {
+		.name		= "rfm69hw-915",
+		.driver_data	= rfm69hw_915,
+	}, {
+		.name		= "rfm69w-315",
+		.driver_data	= rfm69w_315,
+	}, {
+		.name		= "rfm69w-433",
+		.driver_data	= rfm69w_433,
+	}, {
+		.name		= "rfm69w-868",
+		.driver_data	= rfm69w_868,
+	}, {
+		.name		= "rfm69w-915",
+		.driver_data	= rfm69w_915,
+	},
+	{ },
+};
+
+
+
+static const struct of_device_id rfm69_of_match[] = {
+
+	{ .compatible = "hoperf,rfm69cw-315",.data = &chips[rfm69cw_315] },
+	{ .compatible = "hoperf,rfm69cw-433",.data = &chips[rfm69cw_433] },
+	{ .compatible = "hoperf,rfm69cw-868",.data = &chips[rfm69cw_868] },
+	{ .compatible = "hoperf,rfm69hcw-915",.data = &chips[rfm69hcw_915] },
+	{ .compatible = "hoperf,rfm69hcw-315",.data = &chips[rfm69hcw_315] },
+	{ .compatible = "hoperf,rfm69hcw-433",.data = &chips[rfm69hcw_433] },
+	{ .compatible = "hoperf,rfm69hcw-868",.data = &chips[rfm69hcw_868] },
+	{ .compatible = "hoperf,rfm69hw-915",.data = &chips[rfm69hw_915] },
+	{ .compatible = "hoperf,rfm69hw-315",.data = &chips[rfm69hw_315] },
+	{ .compatible = "hoperf,rfm69hw-433",.data = &chips[rfm69hw_433] },
+	{ .compatible = "hoperf,rfm69hw-868",.data = &chips[rfm69hw_868] },
+	{ .compatible = "hoperf,rfm69w-915",.data = &chips[rfm69w_915] },
+	{ .compatible = "hoperf,rfm69w-315",.data = &chips[rfm69w_315] },
+	{ .compatible = "hoperf,rfm69w-433",.data = &chips[rfm69w_433] },
+	{ .compatible = "hoperf,rfm69w-868",.data = &chips[rfm69w_868] },
+	{ .compatible = "hoperf,rfm69w-915",.data = &chips[rfm69w_915] },
+	
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, rfm69_dt_ids);
+MODULE_DEVICE_TABLE(of, rfm69_dt_match);
 
 static struct spi_driver rfm69_spi_driver = {
 	.driver = {
-		.name =		"rfm69",
+		.name =		"rfm69xxx",
 		.owner =	THIS_MODULE,
-		.of_match_table = of_match_ptr(rfm69_dt_ids),
+		.of_match_table = rfm69_of_match,
 	},
 	.probe =	rfm69_probe,
 	.remove =	rfm69_remove,
+	.id_table = rfm69_dt_ids
 
 	/*
 	 * NOTE:  suspend/resume methods are not necessary here.
