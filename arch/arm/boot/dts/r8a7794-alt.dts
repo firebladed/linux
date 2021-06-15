@@ -19,6 +19,9 @@
 		i2c10 = &gpioi2c4;
 		i2c11 = &i2chdmi;
 		i2c12 = &i2cexio4;
+		mmc0 = &mmcif0;
+		mmc1 = &sdhi0;
+		mmc2 = &sdhi1;
 	};
 
 	chosen {
@@ -167,7 +170,6 @@
 		composite-in@20 {
 			compatible = "adi,adv7180";
 			reg = <0x20>;
-			remote = <&vin0>;
 
 			port {
 				adv7180: endpoint {
@@ -331,7 +333,7 @@
 };
 
 &ether {
-	pinctrl-0 = <&ether_pins &phy1_pins>;
+	pinctrl-0 = <&ether_pins>, <&phy1_pins>;
 	pinctrl-names = "default";
 
 	phy-handle = <&phy1>;

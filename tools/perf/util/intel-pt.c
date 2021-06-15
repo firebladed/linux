@@ -108,6 +108,7 @@ struct intel_pt {
 	u64 exstop_id;
 	u64 pwrx_id;
 	u64 cbr_id;
+	u64 psb_id;
 
 	bool sample_pebs;
 	struct evsel *pebs_evsel;
@@ -162,6 +163,9 @@ struct intel_pt_queue {
 	int switch_state;
 	pid_t next_tid;
 	struct thread *thread;
+	struct machine *guest_machine;
+	struct thread *unknown_guest_thread;
+	pid_t guest_machine_pid;
 	bool exclude_kernel;
 	bool have_sample;
 	u64 time;
@@ -236,7 +240,7 @@ static void intel_pt_log_event(union perf_event *event)
 	if (!intel_pt_enable_logging || !f)
 		return;
 
-	perf_event__fprintf(event, f);
+	perf_event__fprintf(event, NULL, f);
 }
 
 static void intel_pt_dump_sample(struct perf_session *session,
@@ -247,6 +251,24 @@ static void intel_pt_dump_sample(struct perf_session *session,
 
 	printf("\n");
 	intel_pt_dump(pt, sample->aux_sample.data, sample->aux_sample.size);
+}
+
+static bool intel_pt_log_events(struct intel_pt *pt, u64 tm)
+{
+	struct perf_time_interval *range = pt->synth_opts.ptime_range;
+	int n = pt->synth_opts.range_num;
+
+	if (pt->synth_opts.log_plus_flags & AUXTRACE_LOG_FLG_ALL_PERF_EVTS)
+		return true;
+
+	if (pt->synth_opts.log_minus_flags & AUXTRACE_LOG_FLG_ALL_PERF_EVTS)
+		return false;
+
+	/* perf_time__ranges_skip_sample does not work if time is zero */
+	if (!tm)
+		tm = 1;
+
+	return !n || !perf_time__ranges_skip_sample(range, n, tm);
 }
 
 static int intel_pt_do_fix_overlap(struct intel_pt *pt, struct auxtrace_buffer *a,
@@ -520,11 +542,68 @@ intel_pt_cache_lookup(struct dso *dso, struct machine *machine, u64 offset)
 	return auxtrace_cache__lookup(dso->auxtrace_cache, offset);
 }
 
-static inline u8 intel_pt_cpumode(struct intel_pt *pt, uint64_t ip)
+static void intel_pt_cache_invalidate(struct dso *dso, struct machine *machine,
+				      u64 offset)
 {
-	return ip >= pt->kernel_start ?
+	struct auxtrace_cache *c = intel_pt_cache(dso, machine);
+
+	if (!c)
+		return;
+
+	auxtrace_cache__remove(dso->auxtrace_cache, offset);
+}
+
+static inline bool intel_pt_guest_kernel_ip(uint64_t ip)
+{
+	/* Assumes 64-bit kernel */
+	return ip & (1ULL << 63);
+}
+
+static inline u8 intel_pt_nr_cpumode(struct intel_pt_queue *ptq, uint64_t ip, bool nr)
+{
+	if (nr) {
+		return intel_pt_guest_kernel_ip(ip) ?
+		       PERF_RECORD_MISC_GUEST_KERNEL :
+		       PERF_RECORD_MISC_GUEST_USER;
+	}
+
+	return ip >= ptq->pt->kernel_start ?
 	       PERF_RECORD_MISC_KERNEL :
 	       PERF_RECORD_MISC_USER;
+}
+
+static inline u8 intel_pt_cpumode(struct intel_pt_queue *ptq, uint64_t from_ip, uint64_t to_ip)
+{
+	/* No support for non-zero CS base */
+	if (from_ip)
+		return intel_pt_nr_cpumode(ptq, from_ip, ptq->state->from_nr);
+	return intel_pt_nr_cpumode(ptq, to_ip, ptq->state->to_nr);
+}
+
+static int intel_pt_get_guest(struct intel_pt_queue *ptq)
+{
+	struct machines *machines = &ptq->pt->session->machines;
+	struct machine *machine;
+	pid_t pid = ptq->pid <= 0 ? DEFAULT_GUEST_KERNEL_ID : ptq->pid;
+
+	if (ptq->guest_machine && pid == ptq->guest_machine_pid)
+		return 0;
+
+	ptq->guest_machine = NULL;
+	thread__zput(ptq->unknown_guest_thread);
+
+	machine = machines__find_guest(machines, pid);
+	if (!machine)
+		return -1;
+
+	ptq->unknown_guest_thread = machine__idle_thread(machine);
+	if (!ptq->unknown_guest_thread)
+		return -1;
+
+	ptq->guest_machine = machine;
+	ptq->guest_machine_pid = pid;
+
+	return 0;
 }
 
 static int intel_pt_walk_next_insn(struct intel_pt_insn *intel_pt_insn,
@@ -543,19 +622,29 @@ static int intel_pt_walk_next_insn(struct intel_pt_insn *intel_pt_insn,
 	u64 offset, start_offset, start_ip;
 	u64 insn_cnt = 0;
 	bool one_map = true;
+	bool nr;
 
 	intel_pt_insn->length = 0;
 
 	if (to_ip && *ip == to_ip)
 		goto out_no_cache;
 
-	cpumode = intel_pt_cpumode(ptq->pt, *ip);
+	nr = ptq->state->to_nr;
+	cpumode = intel_pt_nr_cpumode(ptq, *ip, nr);
 
-	thread = ptq->thread;
-	if (!thread) {
-		if (cpumode != PERF_RECORD_MISC_KERNEL)
+	if (nr) {
+		if (cpumode != PERF_RECORD_MISC_GUEST_KERNEL ||
+		    intel_pt_get_guest(ptq))
 			return -EINVAL;
-		thread = ptq->pt->unknown_thread;
+		machine = ptq->guest_machine;
+		thread = ptq->unknown_guest_thread;
+	} else {
+		thread = ptq->thread;
+		if (!thread) {
+			if (cpumode != PERF_RECORD_MISC_KERNEL)
+				return -EINVAL;
+			thread = ptq->pt->unknown_thread;
+		}
 	}
 
 	while (1) {
@@ -618,8 +707,10 @@ static int intel_pt_walk_next_insn(struct intel_pt_insn *intel_pt_insn,
 
 			*ip += intel_pt_insn->length;
 
-			if (to_ip && *ip == to_ip)
+			if (to_ip && *ip == to_ip) {
+				intel_pt_insn->length = 0;
 				goto out_no_cache;
+			}
 
 			if (*ip >= al.map->end)
 				break;
@@ -703,8 +794,14 @@ static int __intel_pt_pgd_ip(uint64_t ip, void *data)
 	u8 cpumode;
 	u64 offset;
 
-	if (ip >= ptq->pt->kernel_start)
+	if (ptq->state->to_nr) {
+		if (intel_pt_guest_kernel_ip(ip))
+			return intel_pt_match_pgd_ip(ptq->pt, ip, ip, NULL);
+		/* No support for decoding guest user space */
+		return -EINVAL;
+	} else if (ip >= ptq->pt->kernel_start) {
 		return intel_pt_match_pgd_ip(ptq->pt, ip, ip, NULL);
+	}
 
 	cpumode = PERF_RECORD_MISC_USER;
 
@@ -864,6 +961,18 @@ static bool intel_pt_sampling_mode(struct intel_pt *pt)
 	return false;
 }
 
+static u64 intel_pt_ctl(struct intel_pt *pt)
+{
+	struct evsel *evsel;
+	u64 config;
+
+	evlist__for_each_entry(pt->session->evlist, evsel) {
+		if (intel_pt_get_config(pt, &evsel->core.attr, &config))
+			return config;
+	}
+	return 0;
+}
+
 static u64 intel_pt_ns_to_ticks(const struct intel_pt *pt, u64 ns)
 {
 	u64 quot, rem;
@@ -997,10 +1106,12 @@ static struct intel_pt_queue *intel_pt_alloc_queue(struct intel_pt *pt,
 	params.data = ptq;
 	params.return_compression = intel_pt_return_compression(pt);
 	params.branch_enable = intel_pt_branch_enable(pt);
+	params.ctl = intel_pt_ctl(pt);
 	params.max_non_turbo_ratio = pt->max_non_turbo_ratio;
 	params.mtc_period = intel_pt_mtc_period(pt);
 	params.tsc_ctc_ratio_n = pt->tsc_ctc_ratio_n;
 	params.tsc_ctc_ratio_d = pt->tsc_ctc_ratio_d;
+	params.quick = pt->synth_opts.quick;
 
 	if (pt->filts.cnt > 0)
 		params.pgd_ip = intel_pt_pgd_ip;
@@ -1057,6 +1168,7 @@ static void intel_pt_free_queue(void *priv)
 	if (!ptq)
 		return;
 	thread__zput(ptq->thread);
+	thread__zput(ptq->unknown_guest_thread);
 	intel_pt_decoder_free(ptq->decoder);
 	zfree(&ptq->event_buf);
 	zfree(&ptq->last_branch);
@@ -1071,6 +1183,8 @@ static void intel_pt_set_pid_tid_cpu(struct intel_pt *pt,
 
 	if (queue->tid == -1 || pt->have_sched_switch) {
 		ptq->tid = machine__get_current_tid(pt->machine, ptq->cpu);
+		if (ptq->tid == -1)
+			ptq->pid = -1;
 		thread__zput(ptq->thread);
 	}
 
@@ -1086,17 +1200,20 @@ static void intel_pt_set_pid_tid_cpu(struct intel_pt *pt,
 
 static void intel_pt_sample_flags(struct intel_pt_queue *ptq)
 {
+	ptq->insn_len = 0;
 	if (ptq->state->flags & INTEL_PT_ABORT_TX) {
 		ptq->flags = PERF_IP_FLAG_BRANCH | PERF_IP_FLAG_TX_ABORT;
 	} else if (ptq->state->flags & INTEL_PT_ASYNC) {
-		if (ptq->state->to_ip)
+		if (!ptq->state->to_ip)
+			ptq->flags = PERF_IP_FLAG_BRANCH |
+				     PERF_IP_FLAG_TRACE_END;
+		else if (ptq->state->from_nr && !ptq->state->to_nr)
+			ptq->flags = PERF_IP_FLAG_BRANCH | PERF_IP_FLAG_CALL |
+				     PERF_IP_FLAG_VMEXIT;
+		else
 			ptq->flags = PERF_IP_FLAG_BRANCH | PERF_IP_FLAG_CALL |
 				     PERF_IP_FLAG_ASYNC |
 				     PERF_IP_FLAG_INTERRUPT;
-		else
-			ptq->flags = PERF_IP_FLAG_BRANCH |
-				     PERF_IP_FLAG_TRACE_END;
-		ptq->insn_len = 0;
 	} else {
 		if (ptq->state->from_ip)
 			ptq->flags = intel_pt_insn_type(ptq->state->insn_op);
@@ -1269,8 +1386,8 @@ static void intel_pt_prep_b_sample(struct intel_pt *pt,
 		sample->time = tsc_to_perf_time(ptq->timestamp, &pt->tc);
 
 	sample->ip = ptq->state->from_ip;
-	sample->cpumode = intel_pt_cpumode(pt, sample->ip);
 	sample->addr = ptq->state->to_ip;
+	sample->cpumode = intel_pt_cpumode(ptq, sample->ip, sample->addr);
 	sample->period = 1;
 	sample->flags = ptq->flags;
 
@@ -1349,7 +1466,8 @@ static int intel_pt_synth_branch_sample(struct intel_pt_queue *ptq)
 		sample.branch_stack = (struct branch_stack *)&dummy_bs;
 	}
 
-	sample.cyc_cnt = ptq->ipc_cyc_cnt - ptq->last_br_cyc_cnt;
+	if (ptq->state->flags & INTEL_PT_SAMPLE_IPC)
+		sample.cyc_cnt = ptq->ipc_cyc_cnt - ptq->last_br_cyc_cnt;
 	if (sample.cyc_cnt) {
 		sample.insn_cnt = ptq->ipc_insn_cnt - ptq->last_br_insn_cnt;
 		ptq->last_br_insn_cnt = ptq->ipc_insn_cnt;
@@ -1394,9 +1512,13 @@ static int intel_pt_synth_instruction_sample(struct intel_pt_queue *ptq)
 
 	sample.id = ptq->pt->instructions_id;
 	sample.stream_id = ptq->pt->instructions_id;
-	sample.period = ptq->state->tot_insn_cnt - ptq->last_insn_cnt;
+	if (pt->synth_opts.quick)
+		sample.period = 1;
+	else
+		sample.period = ptq->state->tot_insn_cnt - ptq->last_insn_cnt;
 
-	sample.cyc_cnt = ptq->ipc_cyc_cnt - ptq->last_in_cyc_cnt;
+	if (ptq->state->flags & INTEL_PT_SAMPLE_IPC)
+		sample.cyc_cnt = ptq->ipc_cyc_cnt - ptq->last_in_cyc_cnt;
 	if (sample.cyc_cnt) {
 		sample.insn_cnt = ptq->ipc_insn_cnt - ptq->last_in_insn_cnt;
 		ptq->last_in_insn_cnt = ptq->ipc_insn_cnt;
@@ -1490,6 +1612,32 @@ static int intel_pt_synth_cbr_sample(struct intel_pt_queue *ptq)
 	raw.flags = cpu_to_le32(flags);
 	raw.freq = cpu_to_le32(raw.cbr * pt->cbr2khz);
 	raw.reserved3 = 0;
+
+	sample.raw_size = perf_synth__raw_size(raw);
+	sample.raw_data = perf_synth__raw_data(&raw);
+
+	return intel_pt_deliver_synth_event(pt, event, &sample,
+					    pt->pwr_events_sample_type);
+}
+
+static int intel_pt_synth_psb_sample(struct intel_pt_queue *ptq)
+{
+	struct intel_pt *pt = ptq->pt;
+	union perf_event *event = ptq->event_buf;
+	struct perf_sample sample = { .ip = 0, };
+	struct perf_synth_intel_psb raw;
+
+	if (intel_pt_skip_event(pt))
+		return 0;
+
+	intel_pt_prep_p_sample(pt, ptq, event, &sample);
+
+	sample.id = ptq->pt->psb_id;
+	sample.stream_id = ptq->pt->psb_id;
+	sample.flags = 0;
+
+	raw.reserved = 0;
+	raw.offset = ptq->state->psb_offset;
 
 	sample.raw_size = perf_synth__raw_size(raw);
 	sample.raw_data = perf_synth__raw_data(&raw);
@@ -1756,10 +1904,7 @@ static int intel_pt_synth_pebs_sample(struct intel_pt_queue *ptq)
 	else
 		sample.ip = ptq->state->from_ip;
 
-	/* No support for guest mode at this time */
-	cpumode = sample.ip < ptq->pt->kernel_start ?
-		  PERF_RECORD_MISC_USER :
-		  PERF_RECORD_MISC_KERNEL;
+	cpumode = intel_pt_cpumode(ptq, sample.ip, 0);
 
 	event->sample.header.misc = cpumode | PERF_RECORD_MISC_EXACT_IP;
 
@@ -1818,13 +1963,30 @@ static int intel_pt_synth_pebs_sample(struct intel_pt_queue *ptq)
 	if (sample_type & PERF_SAMPLE_ADDR && items->has_mem_access_address)
 		sample.addr = items->mem_access_address;
 
-	if (sample_type & PERF_SAMPLE_WEIGHT) {
+	if (sample_type & PERF_SAMPLE_WEIGHT_TYPE) {
 		/*
 		 * Refer kernel's setup_pebs_adaptive_sample_data() and
 		 * intel_hsw_weight().
 		 */
-		if (items->has_mem_access_latency)
-			sample.weight = items->mem_access_latency;
+		if (items->has_mem_access_latency) {
+			u64 weight = items->mem_access_latency >> 32;
+
+			/*
+			 * Starts from SPR, the mem access latency field
+			 * contains both cache latency [47:32] and instruction
+			 * latency [15:0]. The cache latency is the same as the
+			 * mem access latency on previous platforms.
+			 *
+			 * In practice, no memory access could last than 4G
+			 * cycles. Use latency >> 32 to distinguish the
+			 * different format of the mem access latency field.
+			 */
+			if (weight > 0) {
+				sample.weight = weight & 0xffff;
+				sample.ins_lat = items->mem_access_latency & 0xffff;
+			} else
+				sample.weight = items->mem_access_latency;
+		}
 		if (!sample.weight && items->has_tsx_aux_info) {
 			/* Cycles last block */
 			sample.weight = (u32)items->tsx_aux_info;
@@ -1851,6 +2013,15 @@ static int intel_pt_synth_error(struct intel_pt *pt, int code, int cpu,
 	union perf_event event;
 	char msg[MAX_AUXTRACE_ERROR_MSG];
 	int err;
+
+	if (pt->synth_opts.error_minus_flags) {
+		if (code == INTEL_PT_ERR_OVR &&
+		    pt->synth_opts.error_minus_flags & AUXTRACE_ERR_FLG_OVERFLOW)
+			return 0;
+		if (code == INTEL_PT_ERR_LOST &&
+		    pt->synth_opts.error_minus_flags & AUXTRACE_ERR_FLG_DATA_LOST)
+			return 0;
+	}
 
 	intel_pt__strerror(code, msg, MAX_AUXTRACE_ERROR_MSG);
 
@@ -1922,14 +2093,8 @@ static int intel_pt_sample(struct intel_pt_queue *ptq)
 
 	ptq->have_sample = false;
 
-	if (ptq->state->tot_cyc_cnt > ptq->ipc_cyc_cnt) {
-		/*
-		 * Cycle count and instruction count only go together to create
-		 * a valid IPC ratio when the cycle count changes.
-		 */
-		ptq->ipc_insn_cnt = ptq->state->tot_insn_cnt;
-		ptq->ipc_cyc_cnt = ptq->state->tot_cyc_cnt;
-	}
+	ptq->ipc_insn_cnt = ptq->state->tot_insn_cnt;
+	ptq->ipc_cyc_cnt = ptq->state->tot_cyc_cnt;
 
 	/*
 	 * Do PEBS first to allow for the possibility that the PEBS timestamp
@@ -1942,6 +2107,11 @@ static int intel_pt_sample(struct intel_pt_queue *ptq)
 	}
 
 	if (pt->sample_pwr_events) {
+		if (state->type & INTEL_PT_PSB_EVT) {
+			err = intel_pt_synth_psb_sample(ptq);
+			if (err)
+				return err;
+		}
 		if (ptq->state->cbr != ptq->cbr_seen) {
 			err = intel_pt_synth_cbr_sample(ptq);
 			if (err)
@@ -2003,7 +2173,27 @@ static int intel_pt_sample(struct intel_pt_queue *ptq)
 	}
 
 	if (pt->sample_branches) {
-		err = intel_pt_synth_branch_sample(ptq);
+		if (state->from_nr != state->to_nr &&
+		    state->from_ip && state->to_ip) {
+			struct intel_pt_state *st = (struct intel_pt_state *)state;
+			u64 to_ip = st->to_ip;
+			u64 from_ip = st->from_ip;
+
+			/*
+			 * perf cannot handle having different machines for ip
+			 * and addr, so create 2 branches.
+			 */
+			st->to_ip = 0;
+			err = intel_pt_synth_branch_sample(ptq);
+			if (err)
+				return err;
+			st->from_ip = 0;
+			st->to_ip = to_ip;
+			err = intel_pt_synth_branch_sample(ptq);
+			st->from_ip = from_ip;
+		} else {
+			err = intel_pt_synth_branch_sample(ptq);
+		}
 		if (err)
 			return err;
 	}
@@ -2476,11 +2666,10 @@ static int intel_pt_sync_switch(struct intel_pt *pt, int cpu, pid_t tid,
 static int intel_pt_process_switch(struct intel_pt *pt,
 				   struct perf_sample *sample)
 {
-	struct evsel *evsel;
 	pid_t tid;
 	int cpu, ret;
+	struct evsel *evsel = evlist__id2evsel(pt->session->evlist, sample->id);
 
-	evsel = perf_evlist__id2evsel(pt->session->evlist, sample->id);
 	if (evsel != pt->switch_evsel)
 		return 0;
 
@@ -2561,14 +2750,8 @@ static int intel_pt_context_switch(struct intel_pt *pt, union perf_event *event,
 		tid = sample->tid;
 	}
 
-	if (tid == -1) {
-		pr_err("context_switch event has no tid\n");
-		return -EINVAL;
-	}
-
-	intel_pt_log("context_switch: cpu %d pid %d tid %d time %"PRIu64" tsc %#"PRIx64"\n",
-		     cpu, pid, tid, sample->time, perf_time_to_tsc(sample->time,
-		     &pt->tc));
+	if (tid == -1)
+		intel_pt_log("context_switch event has no tid\n");
 
 	ret = intel_pt_sync_switch(pt, cpu, tid, sample->time);
 	if (ret <= 0)
@@ -2592,6 +2775,67 @@ static int intel_pt_process_itrace_start(struct intel_pt *pt,
 	return machine__set_current_tid(pt->machine, sample->cpu,
 					event->itrace_start.pid,
 					event->itrace_start.tid);
+}
+
+static int intel_pt_find_map(struct thread *thread, u8 cpumode, u64 addr,
+			     struct addr_location *al)
+{
+	if (!al->map || addr < al->map->start || addr >= al->map->end) {
+		if (!thread__find_map(thread, cpumode, addr, al))
+			return -1;
+	}
+
+	return 0;
+}
+
+/* Invalidate all instruction cache entries that overlap the text poke */
+static int intel_pt_text_poke(struct intel_pt *pt, union perf_event *event)
+{
+	u8 cpumode = event->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
+	u64 addr = event->text_poke.addr + event->text_poke.new_len - 1;
+	/* Assume text poke begins in a basic block no more than 4096 bytes */
+	int cnt = 4096 + event->text_poke.new_len;
+	struct thread *thread = pt->unknown_thread;
+	struct addr_location al = { .map = NULL };
+	struct machine *machine = pt->machine;
+	struct intel_pt_cache_entry *e;
+	u64 offset;
+
+	if (!event->text_poke.new_len)
+		return 0;
+
+	for (; cnt; cnt--, addr--) {
+		if (intel_pt_find_map(thread, cpumode, addr, &al)) {
+			if (addr < event->text_poke.addr)
+				return 0;
+			continue;
+		}
+
+		if (!al.map->dso || !al.map->dso->auxtrace_cache)
+			continue;
+
+		offset = al.map->map_ip(al.map, addr);
+
+		e = intel_pt_cache_lookup(al.map->dso, machine, offset);
+		if (!e)
+			continue;
+
+		if (addr + e->byte_cnt + e->length <= event->text_poke.addr) {
+			/*
+			 * No overlap. Working backwards there cannot be another
+			 * basic block that overlaps the text poke if there is a
+			 * branch instruction before the text poke address.
+			 */
+			if (e->branch != INTEL_PT_BR_NO_BRANCH)
+				return 0;
+		} else {
+			intel_pt_cache_invalidate(al.map->dso, machine, offset);
+			intel_pt_log("Invalidated instruction cache for %s at %#"PRIx64"\n",
+				     al.map->dso->long_name, addr);
+		}
+	}
+
+	return 0;
 }
 
 static int intel_pt_process_event(struct perf_session *session,
@@ -2662,9 +2906,14 @@ static int intel_pt_process_event(struct perf_session *session,
 		 event->header.type == PERF_RECORD_SWITCH_CPU_WIDE)
 		err = intel_pt_context_switch(pt, event, sample);
 
-	intel_pt_log("event %u: cpu %d time %"PRIu64" tsc %#"PRIx64" ",
-		     event->header.type, sample->cpu, sample->time, timestamp);
-	intel_pt_log_event(event);
+	if (!err && event->header.type == PERF_RECORD_TEXT_POKE)
+		err = intel_pt_text_poke(pt, event);
+
+	if (intel_pt_enable_logging && intel_pt_log_events(pt, sample->time)) {
+		intel_pt_log("event %u: cpu %d time %"PRIu64" tsc %#"PRIx64" ",
+			     event->header.type, sample->cpu, sample->time, timestamp);
+		intel_pt_log_event(event);
+	}
 
 	return err;
 }
@@ -2913,8 +3162,15 @@ static int intel_pt_synth_events(struct intel_pt *pt,
 
 	if (pt->synth_opts.callchain)
 		attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
-	if (pt->synth_opts.last_branch)
+	if (pt->synth_opts.last_branch) {
 		attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
+		/*
+		 * We don't use the hardware index, but the sample generation
+		 * code uses the new format branch_stack with this field,
+		 * so the event attributes must indicate that it's present.
+		 */
+		attr.branch_sample_type |= PERF_SAMPLE_BRANCH_HW_INDEX;
+	}
 
 	if (pt->synth_opts.instructions) {
 		attr.config = PERF_COUNT_HW_INSTRUCTIONS;
@@ -2972,6 +3228,14 @@ static int intel_pt_synth_events(struct intel_pt *pt,
 			return err;
 		pt->cbr_id = id;
 		intel_pt_set_event_name(evlist, id, "cbr");
+		id += 1;
+
+		attr.config = PERF_SYNTH_INTEL_PSB;
+		err = intel_pt_synth_event(session, "psb", &attr, id);
+		if (err)
+			return err;
+		pt->psb_id = id;
+		intel_pt_set_event_name(evlist, id, "psb");
 		id += 1;
 	}
 
@@ -3307,7 +3571,7 @@ int intel_pt_process_auxtrace_info(union perf_event *event,
 	/*
 	 * Since this thread will not be kept in any rbtree not in a
 	 * list, initialize its list node so that at thread__put() the
-	 * current thread lifetime assuption is kept and we don't segfault
+	 * current thread lifetime assumption is kept and we don't segfault
 	 * at list_del_init().
 	 */
 	INIT_LIST_HEAD(&pt->unknown_thread->node);

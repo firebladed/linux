@@ -31,7 +31,7 @@ static int sja1105_setup_bcast_policer(struct sja1105_private *priv,
 				       struct netlink_ext_ack *extack,
 				       unsigned long cookie, int port,
 				       u64 rate_bytes_per_sec,
-				       s64 burst)
+				       u32 burst)
 {
 	struct sja1105_rule *rule = sja1105_rule_find(priv, cookie);
 	struct sja1105_l2_policing_entry *policing;
@@ -79,9 +79,8 @@ static int sja1105_setup_bcast_policer(struct sja1105_private *priv,
 
 	policing[rule->bcast_pol.sharindx].rate = div_u64(rate_bytes_per_sec *
 							  512, 1000000);
-	policing[rule->bcast_pol.sharindx].smax = div_u64(rate_bytes_per_sec *
-							  PSCHED_NS2TICKS(burst),
-							  PSCHED_TICKS_PER_SEC);
+	policing[rule->bcast_pol.sharindx].smax = burst;
+
 	/* TODO: support per-flow MTU */
 	policing[rule->bcast_pol.sharindx].maxlen = VLAN_ETH_FRAME_LEN +
 						    ETH_FCS_LEN;
@@ -103,7 +102,7 @@ static int sja1105_setup_tc_policer(struct sja1105_private *priv,
 				    struct netlink_ext_ack *extack,
 				    unsigned long cookie, int port, int tc,
 				    u64 rate_bytes_per_sec,
-				    s64 burst)
+				    u32 burst)
 {
 	struct sja1105_rule *rule = sja1105_rule_find(priv, cookie);
 	struct sja1105_l2_policing_entry *policing;
@@ -152,9 +151,8 @@ static int sja1105_setup_tc_policer(struct sja1105_private *priv,
 
 	policing[rule->tc_pol.sharindx].rate = div_u64(rate_bytes_per_sec *
 						       512, 1000000);
-	policing[rule->tc_pol.sharindx].smax = div_u64(rate_bytes_per_sec *
-						       PSCHED_NS2TICKS(burst),
-						       PSCHED_TICKS_PER_SEC);
+	policing[rule->tc_pol.sharindx].smax = burst;
+
 	/* TODO: support per-flow MTU */
 	policing[rule->tc_pol.sharindx].maxlen = VLAN_ETH_FRAME_LEN +
 						 ETH_FCS_LEN;
@@ -177,7 +175,7 @@ static int sja1105_flower_policer(struct sja1105_private *priv, int port,
 				  unsigned long cookie,
 				  struct sja1105_key *key,
 				  u64 rate_bytes_per_sec,
-				  s64 burst)
+				  u32 burst)
 {
 	switch (key->type) {
 	case SJA1105_KEY_BCAST:
@@ -319,11 +317,16 @@ int sja1105_cls_flower_add(struct dsa_switch *ds, int port,
 	if (rc)
 		return rc;
 
-	rc = -EOPNOTSUPP;
-
 	flow_action_for_each(i, act, &rule->action) {
 		switch (act->id) {
 		case FLOW_ACTION_POLICE:
+			if (act->police.rate_pkt_ps) {
+				NL_SET_ERR_MSG_MOD(extack,
+						   "QoS offload not support packets per second");
+				rc = -EOPNOTSUPP;
+				goto out;
+			}
+
 			rc = sja1105_flower_policer(priv, port, extack, cookie,
 						    &key,
 						    act->police.rate_bytes_ps,

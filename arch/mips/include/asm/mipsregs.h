@@ -86,6 +86,7 @@
 #define CP0_XCONTEXT $20
 #define CP0_FRAMEMASK $21
 #define CP0_DIAGNOSTIC $22
+#define CP0_DIAGNOSTIC1 $22, 1
 #define CP0_DEBUG $23
 #define CP0_DEPC $24
 #define CP0_PERFORMANCE $25
@@ -388,6 +389,13 @@
 #define ST0_CU3			0x80000000
 #define ST0_XX			0x80000000	/* MIPS IV naming */
 
+/* in-kernel enabled CUs */
+#ifdef CONFIG_CPU_LOONGSON64
+#define ST0_KERNEL_CUMASK      (ST0_CU0 | ST0_CU2)
+#else
+#define ST0_KERNEL_CUMASK      ST0_CU0
+#endif
+
 /*
  * Bitfields and bit numbers in the coprocessor 0 IntCtl register. (MIPSR2)
  */
@@ -472,6 +480,9 @@
 
 /* Implementation specific trap codes used by MIPS cores */
 #define MIPS_EXCCODE_TLBPAR	16	/* TLB parity error exception */
+
+/* Implementation specific trap codes used by Loongson cores */
+#define LOONGSON_EXCCODE_GSEXC	16	/* Loongson-specific exception */
 
 /*
  * Bits in the coprocessor 0 config register.
@@ -689,35 +700,35 @@
 /* Config6 feature bits for proAptiv/P5600 */
 
 /* Jump register cache prediction disable */
-#define MIPS_CONF6_MTI_JRCD		(_ULCAST_(1) << 0)
+#define MTI_CONF6_JRCD		(_ULCAST_(1) << 0)
 /* MIPSr6 extensions enable */
-#define MIPS_CONF6_MTI_R6		(_ULCAST_(1) << 2)
+#define MTI_CONF6_R6		(_ULCAST_(1) << 2)
 /* IFU Performance Control */
-#define MIPS_CONF6_MTI_IFUPERFCTL	(_ULCAST_(3) << 10)
-#define MIPS_CONF6_MTI_SYND		(_ULCAST_(1) << 13)
+#define MTI_CONF6_IFUPERFCTL	(_ULCAST_(3) << 10)
+#define MTI_CONF6_SYND		(_ULCAST_(1) << 13)
 /* Sleep state performance counter disable */
-#define MIPS_CONF6_MTI_SPCD		(_ULCAST_(1) << 14)
+#define MTI_CONF6_SPCD		(_ULCAST_(1) << 14)
 /* proAptiv FTLB on/off bit */
-#define MIPS_CONF6_MTI_FTLBEN		(_ULCAST_(1) << 15)
+#define MTI_CONF6_FTLBEN	(_ULCAST_(1) << 15)
 /* Disable load/store bonding */
-#define MIPS_CONF6_MTI_DLSB		(_ULCAST_(1) << 21)
+#define MTI_CONF6_DLSB		(_ULCAST_(1) << 21)
 /* FTLB probability bits */
-#define MIPS_CONF6_MTI_FTLBP_SHIFT	(16)
+#define MTI_CONF6_FTLBP_SHIFT	(16)
 
 /* Config6 feature bits for Loongson-3 */
 
 /* Loongson-3 internal timer bit */
-#define MIPS_CONF6_LOONGSON_INTIMER	(_ULCAST_(1) << 6)
+#define LOONGSON_CONF6_INTIMER	(_ULCAST_(1) << 6)
 /* Loongson-3 external timer bit */
-#define MIPS_CONF6_LOONGSON_EXTIMER	(_ULCAST_(1) << 7)
+#define LOONGSON_CONF6_EXTIMER	(_ULCAST_(1) << 7)
 /* Loongson-3 SFB on/off bit, STFill in manual */
-#define MIPS_CONF6_LOONGSON_SFBEN	(_ULCAST_(1) << 8)
+#define LOONGSON_CONF6_SFBEN	(_ULCAST_(1) << 8)
 /* Loongson-3's LL on exclusive cacheline */
-#define MIPS_CONF6_LOONGSON_LLEXC	(_ULCAST_(1) << 16)
+#define LOONGSON_CONF6_LLEXC	(_ULCAST_(1) << 16)
 /* Loongson-3's SC has a random delay */
-#define MIPS_CONF6_LOONGSON_SCRAND	(_ULCAST_(1) << 17)
+#define LOONGSON_CONF6_SCRAND	(_ULCAST_(1) << 17)
 /* Loongson-3 FTLB on/off bit, VTLBOnly in manual */
-#define MIPS_CONF6_LOONGSON_FTLBDIS	(_ULCAST_(1) << 22)
+#define LOONGSON_CONF6_FTLBDIS	(_ULCAST_(1) << 22)
 
 #define MIPS_CONF7_WII		(_ULCAST_(1) << 31)
 
@@ -1051,6 +1062,13 @@
 /* Flush FTLB */
 #define LOONGSON_DIAG_FTLB	(_ULCAST_(1) << 13)
 
+/*
+ * Diag1 (GSCause in Loongson-speak) fields
+ */
+/* Loongson-specific exception code (GSExcCode) */
+#define LOONGSON_DIAG1_EXCCODE_SHIFT	2
+#define LOONGSON_DIAG1_EXCCODE		GENMASK(6, 2)
+
 /* CvmCtl register field definitions */
 #define CVMCTL_IPPCI_SHIFT	7
 #define CVMCTL_IPPCI		(_U64CAST_(0x7) << CVMCTL_IPPCI_SHIFT)
@@ -1066,6 +1084,10 @@
 #define CVMVMCONF_MMUSIZEM1	(_U64CAST_(0xff) << CVMVMCONF_MMUSIZEM1_S)
 #define CVMVMCONF_RMMUSIZEM1_S	0
 #define CVMVMCONF_RMMUSIZEM1	(_U64CAST_(0xff) << CVMVMCONF_RMMUSIZEM1_S)
+
+/* Debug register field definitions */
+#define MIPS_DEBUG_DBP_SHIFT	1
+#define MIPS_DEBUG_DBP		(_ULCAST_(1) << MIPS_DEBUG_DBP_SHIFT)
 
 /*
  * Coprocessor 1 (FPU) register names
@@ -1695,12 +1717,6 @@ do {									\
 #define read_c0_count()		__read_32bit_c0_register($9, 0)
 #define write_c0_count(val)	__write_32bit_c0_register($9, 0, val)
 
-#define read_c0_count2()	__read_32bit_c0_register($9, 6) /* pnx8550 */
-#define write_c0_count2(val)	__write_32bit_c0_register($9, 6, val)
-
-#define read_c0_count3()	__read_32bit_c0_register($9, 7) /* pnx8550 */
-#define write_c0_count3(val)	__write_32bit_c0_register($9, 7, val)
-
 #define read_c0_entryhi()	__read_ulong_c0_register($10, 0)
 #define write_c0_entryhi(val)	__write_ulong_c0_register($10, 0, val)
 
@@ -1718,12 +1734,6 @@ do {									\
 
 #define read_c0_guestctl0ext()	__read_32bit_c0_register($11, 4)
 #define write_c0_guestctl0ext(val) __write_32bit_c0_register($11, 4, val)
-
-#define read_c0_compare2()	__read_32bit_c0_register($11, 6) /* pnx8550 */
-#define write_c0_compare2(val)	__write_32bit_c0_register($11, 6, val)
-
-#define read_c0_compare3()	__read_32bit_c0_register($11, 7) /* pnx8550 */
-#define write_c0_compare3(val)	__write_32bit_c0_register($11, 7, val)
 
 #define read_c0_status()	__read_32bit_c0_register($12, 0)
 
@@ -2717,7 +2727,7 @@ static inline void tlb_probe(void)
 
 static inline void tlb_read(void)
 {
-#if MIPS34K_MISSED_ITLB_WAR
+#ifdef CONFIG_WAR_MIPS34K_MISSED_ITLB
 	int res = 0;
 
 	__asm__ __volatile__(
@@ -2739,7 +2749,7 @@ static inline void tlb_read(void)
 		"tlbr\n\t"
 		".set reorder");
 
-#if MIPS34K_MISSED_ITLB_WAR
+#ifdef CONFIG_WAR_MIPS34K_MISSED_ITLB
 	if ((res & _ULCAST_(1)))
 		__asm__ __volatile__(
 		"	.set	push				\n"

@@ -20,7 +20,9 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 
-DMUB = dmub_srv.o dmub_reg.o dmub_dcn20.o dmub_dcn21.o
+DMUB = dmub_srv.o dmub_srv_stat.o dmub_reg.o dmub_dcn20.o dmub_dcn21.o
+DMUB += dmub_dcn30.o dmub_dcn301.o
+DMUB += dmub_dcn302.o
 
 AMD_DAL_DMUB = $(addprefix $(AMDDALPATH)/dmub/src/,$(DMUB))
 

@@ -8,7 +8,7 @@
  * available in the GRLIB VHDL IP core library.
  *
  * Full documentation of both cores can be found here:
- * http://www.gaisler.com/products/grlib/grip.pdf
+ * https://www.gaisler.com/products/grlib/grip.pdf
  *
  * The Gigabit version supports scatter/gather DMA, any alignment of
  * buffers and checksum offloading.
@@ -1449,10 +1449,10 @@ static int greth_of_probe(struct platform_device *ofdev)
 			break;
 	}
 	if (i == 6) {
-		const u8 *addr;
+		u8 addr[ETH_ALEN];
 
-		addr = of_get_mac_address(ofdev->dev.of_node);
-		if (!IS_ERR(addr)) {
+		err = of_get_mac_address(ofdev->dev.of_node, addr);
+		if (!err) {
 			for (i = 0; i < 6; i++)
 				macaddr[i] = (unsigned int) addr[i];
 		} else {

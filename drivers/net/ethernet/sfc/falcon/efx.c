@@ -2800,7 +2800,7 @@ static void ef4_probe_vpd_strings(struct ef4_nic *efx)
 	}
 
 	/* Get the Read only section */
-	ro_start = pci_vpd_find_tag(vpd_data, 0, vpd_size, PCI_VPD_LRDT_RO_DATA);
+	ro_start = pci_vpd_find_tag(vpd_data, vpd_size, PCI_VPD_LRDT_RO_DATA);
 	if (ro_start < 0) {
 		netif_err(efx, drv, efx->net_dev, "VPD Read-only not found\n");
 		return;
@@ -3118,7 +3118,7 @@ static const struct dev_pm_ops ef4_pm_ops = {
  * Stop the software path and request a slot reset.
  */
 static pci_ers_result_t ef4_io_error_detected(struct pci_dev *pdev,
-					      enum pci_channel_state state)
+					      pci_channel_state_t state)
 {
 	pci_ers_result_t status = PCI_ERS_RESULT_RECOVERED;
 	struct ef4_nic *efx = pci_get_drvdata(pdev);

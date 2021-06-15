@@ -49,8 +49,8 @@ struct vdic_pipeline_ops {
 /*
  * Min/Max supported width and heights.
  */
-#define MIN_W       176
-#define MIN_H       144
+#define MIN_W        32
+#define MIN_H        32
 #define MAX_W_VDIC  968
 #define MAX_H_VDIC 2048
 #define W_ALIGN    4 /* multiple of 16 pixels */
@@ -246,7 +246,7 @@ static int setup_vdi_channel(struct vdic_priv *priv,
 	ipu_cpmem_zero(channel);
 
 	memset(&image, 0, sizeof(image));
-	image.pix = vdev->fmt.fmt.pix;
+	image.pix = vdev->fmt;
 	image.rect = vdev->compose;
 	/* one field to VDIC channels */
 	image.pix.height /= 2;
@@ -856,8 +856,9 @@ static int vdic_registered(struct v4l2_subdev *sd)
 
 		/* set a default mbus format  */
 		ret = imx_media_init_mbus_fmt(&priv->format_mbus[i],
-					      640, 480, code, V4L2_FIELD_NONE,
-					      &priv->cc[i]);
+					      IMX_MEDIA_DEF_PIX_WIDTH,
+					      IMX_MEDIA_DEF_PIX_HEIGHT, code,
+					      V4L2_FIELD_NONE, &priv->cc[i]);
 		if (ret)
 			return ret;
 

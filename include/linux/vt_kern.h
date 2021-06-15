@@ -16,18 +16,6 @@
 #include <linux/consolemap.h>
 #include <linux/notifier.h>
 
-/*
- * Presently, a lot of graphics programs do not restore the contents of
- * the higher font pages.  Defining this flag will avoid use of them, but
- * will lose support for PIO_FONTRESET.  Note that many font operations are
- * not likely to work with these programs anyway; they need to be
- * fixed.  The linux/Documentation directory includes a code snippet
- * to save and restore the text font.
- */
-#ifdef CONFIG_VGA_CONSOLE
-#define BROKEN_GRAPHICS_PROGRAMS 1
-#endif
-
 void kd_mksound(unsigned int hz, unsigned int ticks);
 int kbd_rate(struct kbd_repeat *rep);
 
@@ -74,8 +62,6 @@ int con_set_default_unimap(struct vc_data *vc);
 void con_free_unimap(struct vc_data *vc);
 int con_copy_unimap(struct vc_data *dst_vc, struct vc_data *src_vc);
 
-#define vc_translate(vc, c) ((vc)->vc_translate[(c) |			\
-					((vc)->vc_toggle_meta ? 0x80 : 0)])
 #else
 static inline int con_set_trans_old(unsigned char __user *table)
 {
@@ -124,7 +110,6 @@ int con_copy_unimap(struct vc_data *dst_vc, struct vc_data *src_vc)
 	return 0;
 }
 
-#define vc_translate(vc, c) (c)
 #endif
 
 /* vt.c */

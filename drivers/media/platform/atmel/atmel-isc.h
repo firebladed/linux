@@ -41,6 +41,7 @@ struct isc_buffer {
 struct isc_subdev_entity {
 	struct v4l2_subdev		*sd;
 	struct v4l2_async_subdev	*asd;
+	struct device_node		*epn;
 	struct v4l2_async_notifier      notifier;
 
 	u32 pfe_cfg0;
@@ -133,7 +134,7 @@ struct isc_ctrls {
 
 	/* one for each component : GR, R, GB, B */
 	u32 gain[HIST_BAYER];
-	u32 offset[HIST_BAYER];
+	s32 offset[HIST_BAYER];
 
 	u32 hist_entry[HIST_ENTRIES];
 	u32 hist_count[HIST_BAYER];

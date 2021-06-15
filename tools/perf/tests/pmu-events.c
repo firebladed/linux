@@ -12,10 +12,13 @@
 #include "util/evlist.h"
 #include "util/expr.h"
 #include "util/parse-events.h"
+#include "metricgroup.h"
 
 struct perf_pmu_test_event {
+	/* used for matching against events from generated pmu-events.c */
 	struct pmu_event event;
 
+	/* used for matching against event aliases */
 	/* extra events for aliases */
 	const char *alias_str;
 
@@ -77,6 +80,17 @@ static struct perf_pmu_test_event test_cpu_events[] = {
 		},
 		.alias_str = "umask=0,(null)=0x30d40,event=0x3a",
 		.alias_long_desc = "Number of Enhanced Intel SpeedStep(R) Technology (EIST) transitions",
+	},
+	{
+		.event = {
+			.name = "l3_cache_rd",
+			.event = "event=0x40",
+			.desc = "L3 cache access, read",
+			.long_desc = "Attributable Level 3 cache access, read",
+			.topic = "cache",
+		},
+		.alias_str = "event=0x40",
+		.alias_long_desc = "Attributable Level 3 cache access, read",
 	},
 	{ /* sentinel */
 		.event = {
@@ -274,6 +288,7 @@ static int __test__pmu_event_aliases(char *pmu_name, int *count)
 	int res = 0;
 	bool use_uncore_table;
 	struct pmu_events_map *map = __test_pmu_get_events_map();
+	struct perf_pmu_alias *a, *tmp;
 
 	if (!map)
 		return -1;
@@ -347,11 +362,16 @@ static int __test__pmu_event_aliases(char *pmu_name, int *count)
 			  pmu_name, alias->name);
 	}
 
+	list_for_each_entry_safe(a, tmp, &aliases, list) {
+		list_del(&a->list);
+		perf_pmu_free_alias(a);
+	}
 	free(pmu);
 	return res;
 }
 
 
+/* Test that aliases generated are as expected */
 static int test_aliases(void)
 {
 	struct perf_pmu *pmu = NULL;
@@ -390,9 +410,9 @@ static bool is_number(const char *str)
 	return errno == 0 && end_ptr != str;
 }
 
-static int check_parse_id(const char *id, bool same_cpu, struct pmu_event *pe)
+static int check_parse_id(const char *id, struct parse_events_error *error,
+			  struct perf_pmu *fake_pmu)
 {
-	struct parse_events_error error;
 	struct evlist *evlist;
 	int ret;
 
@@ -401,8 +421,18 @@ static int check_parse_id(const char *id, bool same_cpu, struct pmu_event *pe)
 		return 0;
 
 	evlist = evlist__new();
-	memset(&error, 0, sizeof(error));
-	ret = parse_events(evlist, id, &error);
+	if (!evlist)
+		return -ENOMEM;
+	ret = __parse_events(evlist, id, error, fake_pmu);
+	evlist__delete(evlist);
+	return ret;
+}
+
+static int check_parse_cpu(const char *id, bool same_cpu, struct pmu_event *pe)
+{
+	struct parse_events_error error = { .idx = 0, };
+
+	int ret = check_parse_id(id, &error, NULL);
 	if (ret && same_cpu) {
 		pr_warning("Parse event failed metric '%s' id '%s' expr '%s'\n",
 			pe->metric_name, id, pe->metric_expr);
@@ -413,7 +443,18 @@ static int check_parse_id(const char *id, bool same_cpu, struct pmu_event *pe)
 			  id, pe->metric_name, pe->metric_expr);
 		ret = 0;
 	}
-	evlist__delete(evlist);
+	free(error.str);
+	free(error.help);
+	free(error.first_str);
+	free(error.first_help);
+	return ret;
+}
+
+static int check_parse_fake(const char *id)
+{
+	struct parse_events_error error = { .idx = 0, };
+	int ret = check_parse_id(id, &error, &perf_pmu__fake);
+
 	free(error.str);
 	free(error.help);
 	free(error.first_str);
@@ -431,9 +472,74 @@ static void expr_failure(const char *msg,
 	pr_debug("On expression %s\n", pe->metric_expr);
 }
 
+struct metric {
+	struct list_head list;
+	struct metric_ref metric_ref;
+};
+
+static int resolve_metric_simple(struct expr_parse_ctx *pctx,
+				 struct list_head *compound_list,
+				 struct pmu_events_map *map,
+				 const char *metric_name)
+{
+	struct hashmap_entry *cur, *cur_tmp;
+	struct metric *metric, *tmp;
+	size_t bkt;
+	bool all;
+	int rc;
+
+	do {
+		all = true;
+		hashmap__for_each_entry_safe((&pctx->ids), cur, cur_tmp, bkt) {
+			struct metric_ref *ref;
+			struct pmu_event *pe;
+
+			pe = metricgroup__find_metric(cur->key, map);
+			if (!pe)
+				continue;
+
+			if (!strcmp(metric_name, (char *)cur->key)) {
+				pr_warning("Recursion detected for metric %s\n", metric_name);
+				rc = -1;
+				goto out_err;
+			}
+
+			all = false;
+
+			/* The metric key itself needs to go out.. */
+			expr__del_id(pctx, cur->key);
+
+			metric = malloc(sizeof(*metric));
+			if (!metric) {
+				rc = -ENOMEM;
+				goto out_err;
+			}
+
+			ref = &metric->metric_ref;
+			ref->metric_name = pe->metric_name;
+			ref->metric_expr = pe->metric_expr;
+			list_add_tail(&metric->list, compound_list);
+
+			rc = expr__find_other(pe->metric_expr, NULL, pctx, 0);
+			if (rc)
+				goto out_err;
+			break; /* The hashmap has been modified, so restart */
+		}
+	} while (!all);
+
+	return 0;
+
+out_err:
+	list_for_each_entry_safe(metric, tmp, compound_list, list)
+		free(metric);
+
+	return rc;
+
+}
+
 static int test_parsing(void)
 {
-	struct pmu_events_map *cpus_map = perf_pmu__find_map(NULL);
+	struct pmu_events_map *cpus_map = pmu_events_map__find();
 	struct pmu_events_map *map;
 	struct pmu_event *pe;
 	int i, j, k;
@@ -448,7 +554,9 @@ static int test_parsing(void)
 			break;
 		j = 0;
 		for (;;) {
+			struct metric *metric, *tmp;
 			struct hashmap_entry *cur;
+			LIST_HEAD(compound_list);
 			size_t bkt;
 
 			pe = &map->table[j++];
@@ -464,6 +572,13 @@ static int test_parsing(void)
 				continue;
 			}
 
+			if (resolve_metric_simple(&ctx, &compound_list, map,
+						  pe->metric_name)) {
+				expr_failure("Could not resolve metrics", map, pe);
+				ret++;
+				goto exit; /* Don't tolerate errors due to severity */
+			}
+
 			/*
 			 * Add all ids with a made up value. The value may
 			 * trigger divide by zero when subtracted and so try to
@@ -471,12 +586,17 @@ static int test_parsing(void)
 			 */
 			k = 1;
 			hashmap__for_each_entry((&ctx.ids), cur, bkt)
-				expr__add_id(&ctx, strdup(cur->key), k++);
+				expr__add_id_val(&ctx, strdup(cur->key), k++);
 
 			hashmap__for_each_entry((&ctx.ids), cur, bkt) {
-				if (check_parse_id(cur->key, map == cpus_map,
+				if (check_parse_cpu(cur->key, map == cpus_map,
 						   pe))
 					ret++;
+			}
+
+			list_for_each_entry_safe(metric, tmp, &compound_list, list) {
+				expr__add_ref(&ctx, &metric->metric_ref);
+				free(metric);
 			}
 
 			if (expr__parse(&result, &ctx, pe->metric_expr, 0)) {
@@ -487,7 +607,102 @@ static int test_parsing(void)
 		}
 	}
 	/* TODO: fail when not ok */
+exit:
 	return ret == 0 ? TEST_OK : TEST_SKIP;
+}
+
+struct test_metric {
+	const char *str;
+};
+
+static struct test_metric metrics[] = {
+	{ "(unc_p_power_state_occupancy.cores_c0 / unc_p_clockticks) * 100." },
+	{ "imx8_ddr0@read\\-cycles@ * 4 * 4", },
+	{ "imx8_ddr0@axid\\-read\\,axi_mask\\=0xffff\\,axi_id\\=0x0000@ * 4", },
+	{ "(cstate_pkg@c2\\-residency@ / msr@tsc@) * 100", },
+	{ "(imx8_ddr0@read\\-cycles@ + imx8_ddr0@write\\-cycles@)", },
+};
+
+static int metric_parse_fake(const char *str)
+{
+	struct expr_parse_ctx ctx;
+	struct hashmap_entry *cur;
+	double result;
+	int ret = -1;
+	size_t bkt;
+	int i;
+
+	pr_debug("parsing '%s'\n", str);
+
+	expr__ctx_init(&ctx);
+	if (expr__find_other(str, NULL, &ctx, 0) < 0) {
+		pr_err("expr__find_other failed\n");
+		return -1;
+	}
+
+	/*
+	 * Add all ids with a made up value. The value may
+	 * trigger divide by zero when subtracted and so try to
+	 * make them unique.
+	 */
+	i = 1;
+	hashmap__for_each_entry((&ctx.ids), cur, bkt)
+		expr__add_id_val(&ctx, strdup(cur->key), i++);
+
+	hashmap__for_each_entry((&ctx.ids), cur, bkt) {
+		if (check_parse_fake(cur->key)) {
+			pr_err("check_parse_fake failed\n");
+			goto out;
+		}
+	}
+
+	if (expr__parse(&result, &ctx, str, 0))
+		pr_err("expr__parse failed\n");
+	else
+		ret = 0;
+
+out:
+	expr__ctx_clear(&ctx);
+	return ret;
+}
+
+/*
+ * Parse all the metrics for current architecture,
+ * or all defined cpus via the 'fake_pmu'
+ * in parse_events.
+ */
+static int test_parsing_fake(void)
+{
+	struct pmu_events_map *map;
+	struct pmu_event *pe;
+	unsigned int i, j;
+	int err = 0;
+
+	for (i = 0; i < ARRAY_SIZE(metrics); i++) {
+		err = metric_parse_fake(metrics[i].str);
+		if (err)
+			return err;
+	}
+
+	i = 0;
+	for (;;) {
+		map = &pmu_events_map[i++];
+		if (!map->table)
+			break;
+		j = 0;
+		for (;;) {
+			pe = &map->table[j++];
+			if (!pe->name && !pe->metric_group && !pe->metric_name)
+				break;
+			if (!pe->metric_expr)
+				continue;
+			err = metric_parse_fake(pe->metric_expr);
+			if (err)
+				return err;
+		}
+	}
+
+	return 0;
 }
 
 static const struct {
@@ -505,6 +720,10 @@ static const struct {
 	{
 		.func = test_parsing,
 		.desc = "Parsing of PMU event table metrics",
+	},
+	{
+		.func = test_parsing_fake,
+		.desc = "Parsing of PMU event table metrics with fake PMUs",
 	},
 };
 

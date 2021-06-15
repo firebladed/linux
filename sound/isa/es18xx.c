@@ -955,7 +955,7 @@ static int snd_es18xx_info_mux(struct snd_kcontrol *kcontrol, struct snd_ctl_ele
 	case 0x1887:
 	case 0x1888:
 		return snd_ctl_enum_info(uinfo, 1, 5, texts5Source);
-	case 0x1869: /* DS somewhat contradictory for 1869: could be be 5 or 8 */
+	case 0x1869: /* DS somewhat contradictory for 1869: could be 5 or 8 */
 	case 0x1879:
 		return snd_ctl_enum_info(uinfo, 1, 8, texts8Source);
 	default:
@@ -998,7 +998,7 @@ static int snd_es18xx_put_mux(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 			val = 3;
 		} else
 			retVal = snd_es18xx_mixer_bits(chip, 0x7a, 0x08, 0x00) != 0x00;
-		/* fall through */
+		fallthrough;
  /* 4 source chips */
 	case 0x1868:
 	case 0x1878:
@@ -1929,17 +1929,9 @@ static int snd_es18xx_mixer(struct snd_card *card)
 
 /* Card level */
 
-MODULE_AUTHOR("Christian Fischbach <fishbach@pool.informatik.rwth-aachen.de>, Abramo Bagnara <abramo@alsa-project.org>");  
+MODULE_AUTHOR("Christian Fischbach <fishbach@pool.informatik.rwth-aachen.de>, Abramo Bagnara <abramo@alsa-project.org>");
 MODULE_DESCRIPTION("ESS ES18xx AudioDrive");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("{{ESS,ES1868 PnP AudioDrive},"
-		"{ESS,ES1869 PnP AudioDrive},"
-		"{ESS,ES1878 PnP AudioDrive},"
-		"{ESS,ES1879 PnP AudioDrive},"
-		"{ESS,ES1887 PnP AudioDrive},"
-		"{ESS,ES1888 PnP AudioDrive},"
-		"{ESS,ES1887 AudioDrive},"
-		"{ESS,ES1888 AudioDrive}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
@@ -2210,11 +2202,10 @@ static int snd_es18xx_isa_probe(struct device *pdev, unsigned int dev)
 	}
 }
 
-static int snd_es18xx_isa_remove(struct device *devptr,
-				 unsigned int dev)
+static void snd_es18xx_isa_remove(struct device *devptr,
+				  unsigned int dev)
 {
 	snd_card_free(dev_get_drvdata(devptr));
-	return 0;
 }
 
 #ifdef CONFIG_PM

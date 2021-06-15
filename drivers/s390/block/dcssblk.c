@@ -31,8 +31,7 @@
 
 static int dcssblk_open(struct block_device *bdev, fmode_t mode);
 static void dcssblk_release(struct gendisk *disk, fmode_t mode);
-static blk_qc_t dcssblk_make_request(struct request_queue *q,
-						struct bio *bio);
+static blk_qc_t dcssblk_submit_bio(struct bio *bio);
 static long dcssblk_dax_direct_access(struct dax_device *dax_dev, pgoff_t pgoff,
 		long nr_pages, void **kaddr, pfn_t *pfn);
 
@@ -41,6 +40,7 @@ static char dcssblk_segments[DCSSBLK_PARM_LEN] = "\0";
 static int dcssblk_major;
 static const struct block_device_operations dcssblk_devops = {
 	.owner   	= THIS_MODULE,
+	.submit_bio	= dcssblk_submit_bio,
 	.open    	= dcssblk_open,
 	.release 	= dcssblk_release,
 };
@@ -651,8 +651,7 @@ dcssblk_add_store(struct device *dev, struct device_attribute *attr, const char 
 	}
 	dev_info->gd->major = dcssblk_major;
 	dev_info->gd->fops = &dcssblk_devops;
-	dev_info->dcssblk_queue =
-		blk_alloc_queue(dcssblk_make_request, NUMA_NO_NODE);
+	dev_info->dcssblk_queue = blk_alloc_queue(NUMA_NO_NODE);
 	dev_info->gd->queue = dev_info->dcssblk_queue;
 	dev_info->gd->private_data = dev_info;
 	blk_queue_logical_block_size(dev_info->dcssblk_queue, 4096);
@@ -833,7 +832,6 @@ dcssblk_open(struct block_device *bdev, fmode_t mode)
 		goto out;
 	}
 	atomic_inc(&dev_info->use_count);
-	bdev->bd_block_size = 4096;
 	rc = 0;
 out:
 	return rc;
@@ -868,7 +866,7 @@ dcssblk_release(struct gendisk *disk, fmode_t mode)
 }
 
 static blk_qc_t
-dcssblk_make_request(struct request_queue *q, struct bio *bio)
+dcssblk_submit_bio(struct bio *bio)
 {
 	struct dcssblk_dev_info *dev_info;
 	struct bio_vec bvec;
@@ -878,20 +876,16 @@ dcssblk_make_request(struct request_queue *q, struct bio *bio)
 	unsigned long source_addr;
 	unsigned long bytes_done;
 
-	blk_queue_split(q, &bio);
+	blk_queue_split(&bio);
 
 	bytes_done = 0;
-	dev_info = bio->bi_disk->private_data;
+	dev_info = bio->bi_bdev->bd_disk->private_data;
 	if (dev_info == NULL)
 		goto fail;
 	if ((bio->bi_iter.bi_sector & 7) != 0 ||
 	    (bio->bi_iter.bi_size & 4095) != 0)
 		/* Request is not page-aligned. */
 		goto fail;
-	if (bio_end_sector(bio) > get_capacity(bio->bi_disk)) {
-		/* Request beyond end of DCSS segment. */
-		goto fail;
-	}
 	/* verify data transfer direction */
 	if (dev_info->is_shared) {
 		switch (dev_info->segment_type) {

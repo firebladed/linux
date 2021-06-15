@@ -9,7 +9,6 @@
 #include "intel_engine_pm.h"
 #include "intel_gpu_commands.h"
 #include "intel_lrc.h"
-#include "intel_lrc_reg.h"
 #include "intel_ring.h"
 #include "intel_sseu.h"
 
@@ -30,7 +29,7 @@ static int gen8_emit_rpcs_config(struct i915_request *rq,
 	*cs++ = MI_STORE_DWORD_IMM_GEN4 | MI_USE_GGTT;
 	*cs++ = lower_32_bits(offset);
 	*cs++ = upper_32_bits(offset);
-	*cs++ = intel_sseu_make_rpcs(rq->i915, &sseu);
+	*cs++ = intel_sseu_make_rpcs(rq->engine->gt, &sseu);
 
 	intel_ring_advance(rq, cs);
 

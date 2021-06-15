@@ -80,13 +80,16 @@ prototypes::
 				struct file *, unsigned open_flag,
 				umode_t create_mode);
 	int (*tmpfile) (struct inode *, struct dentry *, umode_t);
+	int (*fileattr_set)(struct user_namespace *mnt_userns,
+			    struct dentry *dentry, struct fileattr *fa);
+	int (*fileattr_get)(struct dentry *dentry, struct fileattr *fa);
 
 locking rules:
 	all may block
 
-============	=============================================
+=============	=============================================
 ops		i_rwsem(inode)
-============	=============================================
+=============	=============================================
 lookup:		shared
 create:		exclusive
 link:		exclusive (both)
@@ -107,7 +110,9 @@ fiemap:		no
 update_time:	no
 atomic_open:	shared (exclusive if O_CREAT is set in open flags)
 tmpfile:	no
-============	=============================================
+fileattr_get:	no or exclusive
+fileattr_set:	exclusive
+=============	=============================================
 
 
 	Additionally, ->rmdir(), ->unlink() and ->rename() have ->i_rwsem
@@ -126,9 +131,10 @@ prototypes::
 	int (*get)(const struct xattr_handler *handler, struct dentry *dentry,
 		   struct inode *inode, const char *name, void *buffer,
 		   size_t size);
-	int (*set)(const struct xattr_handler *handler, struct dentry *dentry,
-		   struct inode *inode, const char *name, const void *buffer,
-		   size_t size, int flags);
+	int (*set)(const struct xattr_handler *handler,
+                   struct user_namespace *mnt_userns,
+                   struct dentry *dentry, struct inode *inode, const char *name,
+                   const void *buffer, size_t size, int flags);
 
 locking rules:
 	all may block
@@ -433,15 +439,15 @@ prototypes::
 
 locking rules:
 
-==========		=============	=================	=========
+======================	=============	=================	=========
 ops			inode->i_lock	blocked_lock_lock	may block
-==========		=============	=================	=========
+======================	=============	=================	=========
 lm_notify:		yes		yes			no
 lm_grant:		no		no			no
 lm_break:		yes		no			no
 lm_change		yes		no			no
 lm_breaker_owns_lease:	no		no			no
-==========		=============	=================	=========
+======================	=============	=================	=========
 
 buffer_head
 ===========
@@ -467,9 +473,7 @@ prototypes::
 	int (*compat_ioctl) (struct block_device *, fmode_t, unsigned, unsigned long);
 	int (*direct_access) (struct block_device *, sector_t, void **,
 				unsigned long *);
-	int (*media_changed) (struct gendisk *);
 	void (*unlock_native_capacity) (struct gendisk *);
-	int (*revalidate_disk) (struct gendisk *);
 	int (*getgeo)(struct block_device *, struct hd_geometry *);
 	void (*swap_slot_free_notify) (struct block_device *, unsigned long);
 
@@ -483,15 +487,10 @@ release:		yes
 ioctl:			no
 compat_ioctl:		no
 direct_access:		no
-media_changed:		no
 unlock_native_capacity:	no
-revalidate_disk:	no
 getgeo:			no
 swap_slot_free_notify:	no	(see below)
 ======================= ===================
-
-media_changed, unlock_native_capacity and revalidate_disk are called only from
-check_disk_change().
 
 swap_slot_free_notify is called with swap_lock and sometimes the page lock
 held.
@@ -616,9 +615,9 @@ prototypes::
 
 locking rules:
 
-=============	========	===========================
+=============	=========	===========================
 ops		mmap_lock	PageLocked(page)
-=============	========	===========================
+=============	=========	===========================
 open:		yes
 close:		yes
 fault:		yes		can return with page locked
@@ -626,7 +625,7 @@ map_pages:	yes
 page_mkwrite:	yes		can return with page locked
 pfn_mkwrite:	yes
 access:		yes
-=============	========	===========================
+=============	=========	===========================
 
 ->fault() is called when a previously not present pte is about
 to be faulted in. The filesystem must find and return the page associated

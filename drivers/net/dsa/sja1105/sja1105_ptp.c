@@ -24,7 +24,7 @@
  * this hardware can do (but may be enough for some setups). Anything of higher
  * frequency than 1 Hz will be lost, since there is no timestamp FIFO.
  */
-#define SJA1105_EXTTS_INTERVAL		(HZ / 4)
+#define SJA1105_EXTTS_INTERVAL		(HZ / 6)
 
 /*            This range is actually +/- SJA1105_MAX_ADJ_PPB
  *            divided by 1000 (ppb -> ppm) and with a 16-bit
@@ -51,8 +51,8 @@ enum sja1105_ptp_clk_mode {
 	PTP_SET_MODE = 0,
 };
 
-#define extts_to_data(d) \
-		container_of((d), struct sja1105_ptp_data, extts_work)
+#define extts_to_data(t) \
+		container_of((t), struct sja1105_ptp_data, extts_timer)
 #define ptp_caps_to_data(d) \
 		container_of((d), struct sja1105_ptp_data, caps)
 #define ptp_data_to_sja1105(d) \
@@ -350,6 +350,30 @@ static int sja1105_ptpclkval_write(struct sja1105_private *priv, u64 ticks,
 				ptp_sts);
 }
 
+static void sja1105_extts_poll(struct sja1105_private *priv)
+{
+	struct sja1105_ptp_data *ptp_data = &priv->ptp_data;
+	const struct sja1105_regs *regs = priv->info->regs;
+	struct ptp_clock_event event;
+	u64 ptpsyncts = 0;
+	int rc;
+
+	rc = sja1105_xfer_u64(priv, SPI_READ, regs->ptpsyncts, &ptpsyncts,
+			      NULL);
+	if (rc < 0)
+		dev_err_ratelimited(priv->ds->dev,
+				    "Failed to read PTPSYNCTS: %d\n", rc);
+
+	if (ptpsyncts && ptp_data->ptpsyncts != ptpsyncts) {
+		event.index = 0;
+		event.type = PTP_CLOCK_EXTTS;
+		event.timestamp = ns_to_ktime(sja1105_ticks_to_ns(ptpsyncts));
+		ptp_clock_event(ptp_data->clock, &event);
+
+		ptp_data->ptpsyncts = ptpsyncts;
+	}
+}
+
 static long sja1105_rxtstamp_work(struct ptp_clock_info *ptp)
 {
 	struct sja1105_ptp_data *ptp_data = ptp_caps_to_data(ptp);
@@ -380,6 +404,9 @@ static long sja1105_rxtstamp_work(struct ptp_clock_info *ptp)
 		netif_rx_ni(skb);
 	}
 
+	if (ptp_data->extts_enabled)
+		sja1105_extts_poll(priv);
+
 	mutex_unlock(&ptp_data->lock);
 
 	/* Don't restart */
@@ -404,20 +431,24 @@ bool sja1105_port_rxtstamp(struct dsa_switch *ds, int port,
 	return true;
 }
 
-/* Called from dsa_skb_tx_timestamp. This callback is just to make DSA clone
- * the skb and have it available in DSA_SKB_CB in the .port_deferred_xmit
+/* Called from dsa_skb_tx_timestamp. This callback is just to clone
+ * the skb and have it available in SJA1105_SKB_CB in the .port_deferred_xmit
  * callback, where we will timestamp it synchronously.
  */
-bool sja1105_port_txtstamp(struct dsa_switch *ds, int port,
-			   struct sk_buff *skb, unsigned int type)
+void sja1105_port_txtstamp(struct dsa_switch *ds, int port, struct sk_buff *skb)
 {
 	struct sja1105_private *priv = ds->priv;
 	struct sja1105_port *sp = &priv->ports[port];
+	struct sk_buff *clone;
 
 	if (!sp->hwts_tx_en)
-		return false;
+		return;
 
-	return true;
+	clone = skb_clone_sk(skb);
+	if (!clone)
+		return;
+
+	SJA1105_SKB_CB(skb)->clone = clone;
 }
 
 static int sja1105_ptp_reset(struct dsa_switch *ds)
@@ -595,36 +626,21 @@ static int sja1105_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 	return rc;
 }
 
-static void sja1105_ptp_extts_work(struct work_struct *work)
+static void sja1105_ptp_extts_setup_timer(struct sja1105_ptp_data *ptp_data)
 {
-	struct delayed_work *dw = to_delayed_work(work);
-	struct sja1105_ptp_data *ptp_data = extts_to_data(dw);
-	struct sja1105_private *priv = ptp_data_to_sja1105(ptp_data);
-	const struct sja1105_regs *regs = priv->info->regs;
-	struct ptp_clock_event event;
-	u64 ptpsyncts = 0;
-	int rc;
+	unsigned long expires = ((jiffies / SJA1105_EXTTS_INTERVAL) + 1) *
+				SJA1105_EXTTS_INTERVAL;
 
-	mutex_lock(&ptp_data->lock);
+	mod_timer(&ptp_data->extts_timer, expires);
+}
 
-	rc = sja1105_xfer_u64(priv, SPI_READ, regs->ptpsyncts, &ptpsyncts,
-			      NULL);
-	if (rc < 0)
-		dev_err_ratelimited(priv->ds->dev,
-				    "Failed to read PTPSYNCTS: %d\n", rc);
+static void sja1105_ptp_extts_timer(struct timer_list *t)
+{
+	struct sja1105_ptp_data *ptp_data = extts_to_data(t);
 
-	if (ptpsyncts && ptp_data->ptpsyncts != ptpsyncts) {
-		event.index = 0;
-		event.type = PTP_CLOCK_EXTTS;
-		event.timestamp = ns_to_ktime(sja1105_ticks_to_ns(ptpsyncts));
-		ptp_clock_event(ptp_data->clock, &event);
+	ptp_schedule_worker(ptp_data->clock, 0);
 
-		ptp_data->ptpsyncts = ptpsyncts;
-	}
-
-	mutex_unlock(&ptp_data->lock);
-
-	schedule_delayed_work(&ptp_data->extts_work, SJA1105_EXTTS_INTERVAL);
+	sja1105_ptp_extts_setup_timer(ptp_data);
 }
 
 static int sja1105_change_ptp_clk_pin_func(struct sja1105_private *priv,
@@ -771,11 +787,12 @@ static int sja1105_extts_enable(struct sja1105_private *priv,
 	if (rc)
 		return rc;
 
+	priv->ptp_data.extts_enabled = on;
+
 	if (on)
-		schedule_delayed_work(&priv->ptp_data.extts_work,
-				      SJA1105_EXTTS_INTERVAL);
+		sja1105_ptp_extts_setup_timer(&priv->ptp_data);
 	else
-		cancel_delayed_work_sync(&priv->ptp_data.extts_work);
+		del_timer_sync(&priv->ptp_data.extts_timer);
 
 	return 0;
 }
@@ -858,7 +875,7 @@ int sja1105_ptp_clock_register(struct dsa_switch *ds)
 	ptp_data->cmd.corrclk4ts = true;
 	ptp_data->cmd.ptpclkadd = PTP_SET_MODE;
 
-	INIT_DELAYED_WORK(&ptp_data->extts_work, sja1105_ptp_extts_work);
+	timer_setup(&ptp_data->extts_timer, sja1105_ptp_extts_timer, 0);
 
 	return sja1105_ptp_reset(ds);
 }
@@ -871,7 +888,7 @@ void sja1105_ptp_clock_unregister(struct dsa_switch *ds)
 	if (IS_ERR_OR_NULL(ptp_data->clock))
 		return;
 
-	cancel_delayed_work_sync(&ptp_data->extts_work);
+	del_timer_sync(&ptp_data->extts_timer);
 	ptp_cancel_worker_sync(ptp_data->clock);
 	skb_queue_purge(&ptp_data->skb_rxtstamp_queue);
 	ptp_clock_unregister(ptp_data->clock);

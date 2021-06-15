@@ -97,6 +97,7 @@
 			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
 			#dma-cells = <1>;
 			arm,pl330-broken-no-flushp;
+			arm,pl330-periph-burst;
 			clocks = <&cru ACLK_DMAC>;
 			clock-names = "apb_pclk";
 		};
@@ -298,12 +299,11 @@
 		clock-names = "timer", "pclk";
 	};
 
-	watchdog: wdt@10360000 {
-		compatible = "snps,dw-wdt";
+	watchdog: watchdog@10360000 {
+		compatible = "rockchip,rv1108-wdt", "snps,dw-wdt";
 		reg = <0x10360000 0x100>;
 		interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&cru PCLK_WDT>;
-		clock-names = "pclk_wdt";
 		status = "disabled";
 	};
 
@@ -351,9 +351,9 @@
 		clocks = <&cru SCLK_TSADC>, <&cru PCLK_TSADC>;
 		clock-names = "tsadc", "apb_pclk";
 		pinctrl-names = "init", "default", "sleep";
-		pinctrl-0 = <&otp_gpio>;
+		pinctrl-0 = <&otp_pin>;
 		pinctrl-1 = <&otp_out>;
-		pinctrl-2 = <&otp_gpio>;
+		pinctrl-2 = <&otp_pin>;
 		resets = <&cru SRST_TSADC>;
 		reset-names = "tsadc-apb";
 		rockchip,hw-tshut-temp = <120000>;
@@ -449,6 +449,17 @@
 		rockchip,grf = <&grf>;
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+	};
+
+	nfc: nand-controller@30100000 {
+		compatible = "rockchip,rv1108-nfc";
+		reg = <0x30100000  0x1000>;
+		interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&cru HCLK_NANDC>, <&cru SCLK_NANDC>;
+		clock-names = "ahb", "nfc";
+		assigned-clocks = <&cru SCLK_NANDC>;
+		assigned-clock-rates = <150000000>;
+		status = "disabled";
 	};
 
 	emmc: mmc@30110000 {
@@ -728,7 +739,7 @@
 						<0 RK_PC6 3 &pcfg_pull_none>;
 			};
 
-			i2c2m1_gpio: i2c2m1-gpio {
+			i2c2m1_pins: i2c2m1-pins {
 				rockchip,pins = <0 RK_PC2 RK_FUNC_GPIO &pcfg_pull_none>,
 						<0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
 			};
@@ -740,7 +751,7 @@
 						<1 RK_PD4 2 &pcfg_pull_none>;
 			};
 
-			i2c2m05v_gpio: i2c2m05v-gpio {
+			i2c2m05v_pins: i2c2m05v-pins {
 				rockchip,pins = <1 RK_PD5 RK_FUNC_GPIO &pcfg_pull_none>,
 						<1 RK_PD4 RK_FUNC_GPIO &pcfg_pull_none>;
 			};
@@ -867,7 +878,7 @@
 				rockchip,pins = <0 RK_PB7 1 &pcfg_pull_none>;
 			};
 
-			otp_gpio: otp-gpio {
+			otp_pin: otp-pin {
 				rockchip,pins = <0 RK_PB7 RK_FUNC_GPIO &pcfg_pull_none>;
 			};
 		};
@@ -886,7 +897,7 @@
 				rockchip,pins = <3 RK_PA3 1 &pcfg_pull_none>;
 			};
 
-			uart0_rts_gpio: uart0-rts-gpio {
+			uart0_rts_pin: uart0-rts-pin {
 				rockchip,pins = <3 RK_PA3 RK_FUNC_GPIO &pcfg_pull_none>;
 			};
 		};

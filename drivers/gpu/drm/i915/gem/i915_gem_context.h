@@ -110,7 +110,6 @@ i915_gem_context_clear_user_engines(struct i915_gem_context *ctx)
 
 /* i915_gem_context.c */
 void i915_gem_init__contexts(struct drm_i915_private *i915);
-void i915_gem_driver_release__contexts(struct drm_i915_private *i915);
 
 int i915_gem_context_open(struct drm_i915_private *i915,
 			  struct drm_file *file);
@@ -225,7 +224,7 @@ i915_gem_engines_iter_next(struct i915_gem_engines_iter *it);
 struct i915_lut_handle *i915_lut_handle_alloc(void);
 void i915_lut_handle_free(struct i915_lut_handle *lut);
 
-int i915_gem_user_to_context_sseu(struct drm_i915_private *i915,
+int i915_gem_user_to_context_sseu(struct intel_gt *gt,
 				  const struct drm_i915_gem_context_param_sseu *user,
 				  struct intel_sseu *context);
 

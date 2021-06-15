@@ -160,7 +160,7 @@ static void init_mqd(struct mqd_manager *mm, void **mqd,
 
 	m->cp_hqd_quantum = 1 << CP_HQD_QUANTUM__QUANTUM_EN__SHIFT |
 			1 << CP_HQD_QUANTUM__QUANTUM_SCALE__SHIFT |
-			10 << CP_HQD_QUANTUM__QUANTUM_DURATION__SHIFT;
+			1 << CP_HQD_QUANTUM__QUANTUM_DURATION__SHIFT;
 
 	if (q->format == KFD_QUEUE_FORMAT_AQL) {
 		m->cp_hqd_aql_control =
@@ -275,6 +275,13 @@ static void update_mqd(struct mqd_manager *mm, void *mqd,
 	q->is_active = QUEUE_IS_ACTIVE(*q);
 }
 
+
+static uint32_t read_doorbell_id(void *mqd)
+{
+	struct v9_mqd *m = (struct v9_mqd *)mqd;
+
+	return m->queue_doorbell_id0;
+}
 
 static int destroy_mqd(struct mqd_manager *mm, void *mqd,
 			enum kfd_preempt_type type,
@@ -477,6 +484,7 @@ struct mqd_manager *mqd_manager_init_v9(enum KFD_MQD_TYPE type,
 #if defined(CONFIG_DEBUG_FS)
 		mqd->debugfs_show_mqd = debugfs_show_mqd;
 #endif
+		mqd->read_doorbell_id = read_doorbell_id;
 		break;
 	case KFD_MQD_TYPE_DIQ:
 		mqd->allocate_mqd = allocate_mqd;

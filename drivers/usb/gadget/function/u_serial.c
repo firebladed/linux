@@ -258,9 +258,7 @@ __acquires(&port->port_lock)
 		list_del(&req->list);
 		req->zero = kfifo_is_empty(&port->port_write_buf);
 
-		pr_vdebug("ttyGS%d: tx len=%d, 0x%02x 0x%02x 0x%02x ...\n",
-			  port->port_num, len, *((u8 *)req->buf),
-			  *((u8 *)req->buf+1), *((u8 *)req->buf+2));
+		pr_vdebug("ttyGS%d: tx len=%d, %3ph ...\n", port->port_num, len, req->buf);
 
 		/* Drop lock while we call out of driver; completions
 		 * could be issued while we do so.  Disconnection may
@@ -346,7 +344,7 @@ __acquires(&port->port_lock)
 }
 
 /*
- * RX tasklet takes data out of the RX queue and hands it up to the TTY
+ * RX work takes data out of the RX queue and hands it up to the TTY
  * layer until it refuses to take any more data (or is throttled back).
  * Then it issues reads for any further data.
  *
@@ -386,7 +384,7 @@ static void gs_rx_push(struct work_struct *work)
 			/* presumably a transient fault */
 			pr_warn("ttyGS%d: unexpected RX status %d\n",
 				port->port_num, req->status);
-			/* FALLTHROUGH */
+			fallthrough;
 		case 0:
 			/* normal completion */
 			break;
@@ -472,7 +470,7 @@ static void gs_write_complete(struct usb_ep *ep, struct usb_request *req)
 		/* presumably a transient fault */
 		pr_warn("%s: unexpected %s status %d\n",
 			__func__, ep->name, req->status);
-		/* FALL THROUGH */
+		fallthrough;
 	case 0:
 		/* normal completion */
 		gs_start_tx(port);
@@ -527,7 +525,7 @@ static int gs_alloc_requests(struct usb_ep *ep, struct list_head *head,
 
 /**
  * gs_start_io - start USB I/O streams
- * @dev: encapsulates endpoints to use
+ * @port: port to use
  * Context: holding port_lock; port_tty and port_usb are non-null
  *
  * We only start I/O when something is connected to both sides of
@@ -709,7 +707,7 @@ raced_with_open:
 
 	/* Iff we're disconnected, there can be no I/O in flight so it's
 	 * ok to free the circular buffer; else just scrub it.  And don't
-	 * let the push tasklet fire again until we're re-opened.
+	 * let the push async work fire again until we're re-opened.
 	 */
 	if (gser == NULL)
 		kfifo_free(&port->port_write_buf);
@@ -871,7 +869,7 @@ static void gs_console_complete_out(struct usb_ep *ep, struct usb_request *req)
 	default:
 		pr_warn("%s: unexpected %s status %d\n",
 			__func__, ep->name, req->status);
-		/* fall through */
+		fallthrough;
 	case 0:
 		/* normal completion */
 		spin_lock(&cons->lock);
@@ -1391,6 +1389,7 @@ void gserial_disconnect(struct gserial *gser)
 		if (port->port.tty)
 			tty_hangup(port->port.tty);
 	}
+	port->suspended = false;
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	/* disable endpoints, aborting down any active I/O */

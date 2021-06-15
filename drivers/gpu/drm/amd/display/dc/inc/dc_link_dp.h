@@ -28,7 +28,7 @@
 
 #define LINK_TRAINING_ATTEMPTS 4
 #define LINK_TRAINING_RETRY_DELAY 50 /* ms */
-#define LINK_AUX_DEFAULT_EXTENDED_TIMEOUT_PERIOD 3200 /*us*/
+#define LINK_AUX_DEFAULT_LTTPR_TIMEOUT_PERIOD 3200 /*us*/
 #define LINK_AUX_DEFAULT_TIMEOUT_PERIOD 552 /*us*/
 
 struct dc_link;
@@ -52,6 +52,10 @@ bool dp_validate_mode_timing(
 	struct dc_link *link,
 	const struct dc_crtc_timing *timing);
 
+bool decide_edp_link_settings(struct dc_link *link,
+		struct dc_link_settings *link_setting,
+		uint32_t req_bw);
+
 void decide_link_settings(
 	struct dc_stream_state *stream,
 	struct dc_link_settings *link_setting);
@@ -71,6 +75,8 @@ void detect_edp_sink_caps(struct dc_link *link);
 
 bool is_dp_active_dongle(const struct dc_link *link);
 
+bool is_edp_ilr_optimization_required(struct dc_link *link, struct dc_crtc_timing *crtc_timing);
+
 void dp_enable_mst_on_sink(struct dc_link *link, bool enable);
 
 enum dp_panel_mode dp_get_panel_mode(struct dc_link *link);
@@ -86,5 +92,7 @@ bool dp_set_dsc_enable(struct pipe_ctx *pipe_ctx, bool enable);
 bool dp_set_dsc_pps_sdp(struct pipe_ctx *pipe_ctx, bool enable);
 void dp_set_dsc_on_stream(struct pipe_ctx *pipe_ctx, bool enable);
 bool dp_update_dsc_config(struct pipe_ctx *pipe_ctx);
+bool dp_set_dsc_on_rx(struct pipe_ctx *pipe_ctx, bool enable);
+
 
 #endif /* __DC_LINK_DP_H__ */

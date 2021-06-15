@@ -16,7 +16,6 @@
 #include <linux/interrupt.h>
 #include <linux/spi/spi.h>
 #include <linux/slab.h>
-#include <linux/platform_data/dma-atmel.h>
 #include <linux/of.h>
 
 #include <linux/io.h>
@@ -507,15 +506,10 @@ static int atmel_spi_configure_dma(struct spi_master *master,
 	struct device *dev = &as->pdev->dev;
 	int err;
 
-	dma_cap_mask_t mask;
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_SLAVE, mask);
-
 	master->dma_tx = dma_request_chan(dev, "tx");
 	if (IS_ERR(master->dma_tx)) {
 		err = PTR_ERR(master->dma_tx);
-		if (err != -EPROBE_DEFER)
-			dev_err(dev, "No TX DMA channel, DMA is disabled\n");
+		dev_dbg(dev, "No TX DMA channel, DMA is disabled\n");
 		goto error_clear;
 	}
 
@@ -526,7 +520,7 @@ static int atmel_spi_configure_dma(struct spi_master *master,
 		 * No reason to check EPROBE_DEFER here since we have already
 		 * requested tx channel.
 		 */
-		dev_err(dev, "No RX DMA channel, DMA is disabled\n");
+		dev_dbg(dev, "No RX DMA channel, DMA is disabled\n");
 		goto error;
 	}
 
@@ -859,6 +853,7 @@ static int atmel_spi_set_xfer_speed(struct atmel_spi *as,
 	csr = spi_readl(as, CSR0 + 4 * chip_select);
 	csr = SPI_BFINS(SCBR, scbr, csr);
 	spi_writel(as, CSR0 + 4 * chip_select, csr);
+	xfer->effective_speed_hz = bus_hz / scbr;
 
 	return 0;
 }
@@ -1546,10 +1541,9 @@ static int atmel_spi_probe(struct platform_device *pdev)
 		return PTR_ERR(clk);
 
 	/* setup spi core then atmel-specific driver state */
-	ret = -ENOMEM;
 	master = spi_alloc_master(&pdev->dev, sizeof(*as));
 	if (!master)
-		goto out_free;
+		return -ENOMEM;
 
 	/* the spi->mode bits understood by this driver: */
 	master->use_gpio_descriptors = true;
@@ -1592,7 +1586,7 @@ static int atmel_spi_probe(struct platform_device *pdev)
 		if (ret == 0) {
 			as->use_dma = true;
 		} else if (ret == -EPROBE_DEFER) {
-			return ret;
+			goto out_unmap_regs;
 		}
 	} else if (as->caps.has_pdc_support) {
 		as->use_pdc = true;
@@ -1678,7 +1672,6 @@ out_free_dma:
 	clk_disable_unprepare(clk);
 out_free_irq:
 out_unmap_regs:
-out_free:
 	spi_master_put(master);
 	return ret;
 }

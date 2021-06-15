@@ -21,21 +21,23 @@
 static int __patch_instruction(struct ppc_inst *exec_addr, struct ppc_inst instr,
 			       struct ppc_inst *patch_addr)
 {
-	int err = 0;
-
 	if (!ppc_inst_prefixed(instr)) {
-		__put_user_asm(ppc_inst_val(instr), patch_addr, err, "stw");
-	} else {
-		__put_user_asm(ppc_inst_as_u64(instr), patch_addr, err, "std");
-	}
+		u32 val = ppc_inst_val(instr);
 
-	if (err)
-		return err;
+		__put_kernel_nofault(patch_addr, &val, u32, failed);
+	} else {
+		u64 val = ppc_inst_as_ulong(instr);
+
+		__put_kernel_nofault(patch_addr, &val, u64, failed);
+	}
 
 	asm ("dcbst 0, %0; sync; icbi 0,%1; sync; isync" :: "r" (patch_addr),
 							    "r" (exec_addr));
 
 	return 0;
+
+failed:
+	return -EFAULT;
 }
 
 int raw_patch_instruction(struct ppc_inst *addr, struct ppc_inst instr)
@@ -93,7 +95,7 @@ static int map_patch_area(void *addr, unsigned long text_poke_addr)
 	unsigned long pfn;
 	int err;
 
-	if (is_vmalloc_addr(addr))
+	if (is_vmalloc_or_module_addr(addr))
 		pfn = vmalloc_to_pfn(addr);
 	else
 		pfn = __pa_symbol(addr) >> PAGE_SHIFT;

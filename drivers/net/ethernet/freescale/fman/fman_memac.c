@@ -111,6 +111,7 @@ do {									\
 
 #define IF_MODE_MASK		0x00000003 /* 30-31 Mask on i/f mode bits */
 #define IF_MODE_10G		0x00000000 /* 30-31 10G interface */
+#define IF_MODE_MII		0x00000001 /* 30-31 MII interface */
 #define IF_MODE_GMII		0x00000002 /* 30-31 GMII (1G) interface */
 #define IF_MODE_RGMII		0x00000004
 #define IF_MODE_RGMII_AUTO	0x00008000
@@ -442,6 +443,9 @@ static int init(struct memac_regs __iomem *regs, struct memac_cfg *cfg,
 	case PHY_INTERFACE_MODE_XGMII:
 		tmp |= IF_MODE_10G;
 		break;
+	case PHY_INTERFACE_MODE_MII:
+		tmp |= IF_MODE_MII;
+		break;
 	default:
 		tmp |= IF_MODE_GMII;
 		if (phy_if == PHY_INTERFACE_MODE_RGMII ||
@@ -528,7 +532,7 @@ static void setup_sgmii_internal_phy(struct fman_mac *memac,
 		case 100:
 			tmp_reg16 |= IF_MODE_SGMII_SPEED_100M;
 		break;
-		case 1000: /* fallthrough */
+		case 1000:
 		default:
 			tmp_reg16 |= IF_MODE_SGMII_SPEED_1G;
 		break;
@@ -852,7 +856,6 @@ int memac_set_tx_pause_frames(struct fman_mac *memac, u8 priority,
 
 	tmp = ioread32be(&regs->command_config);
 	tmp &= ~CMD_CFG_PFC_MODE;
-	priority = 0;
 
 	iowrite32be(tmp, &regs->command_config);
 
@@ -982,7 +985,7 @@ int memac_del_hash_mac_address(struct fman_mac *memac, enet_addr_t *eth_addr)
 
 	list_for_each(pos, &memac->multicast_addr_hash->lsts[hash]) {
 		hash_entry = ETH_HASH_ENTRY_OBJ(pos);
-		if (hash_entry->addr == addr) {
+		if (hash_entry && hash_entry->addr == addr) {
 			list_del_init(&hash_entry->node);
 			kfree(hash_entry);
 			break;

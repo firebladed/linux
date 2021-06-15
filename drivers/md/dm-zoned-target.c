@@ -140,7 +140,7 @@ static int dmz_submit_bio(struct dmz_target *dmz, struct dm_zone *zone,
 	bio_advance(bio, clone->bi_iter.bi_size);
 
 	refcount_inc(&bioctx->ref);
-	generic_make_request(clone);
+	submit_bio_noacct(clone);
 
 	if (bio_op(bio) == REQ_OP_WRITE && dmz_is_seq(zone))
 		zone->wp_block += nr_blocks;
@@ -1143,7 +1143,7 @@ static int dmz_message(struct dm_target *ti, unsigned int argc, char **argv,
 static struct target_type dmz_type = {
 	.name		 = "zoned",
 	.version	 = {2, 0, 0},
-	.features	 = DM_TARGET_SINGLETON | DM_TARGET_ZONED_HM,
+	.features	 = DM_TARGET_SINGLETON | DM_TARGET_MIXED_ZONED_MODEL,
 	.module		 = THIS_MODULE,
 	.ctr		 = dmz_ctr,
 	.dtr		 = dmz_dtr,

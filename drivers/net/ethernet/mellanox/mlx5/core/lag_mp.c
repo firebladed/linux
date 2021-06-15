@@ -11,7 +11,7 @@
 
 static bool mlx5_lag_multipath_check_prereq(struct mlx5_lag *ldev)
 {
-	if (!ldev->pf[MLX5_LAG_P1].dev || !ldev->pf[MLX5_LAG_P2].dev)
+	if (!mlx5_lag_is_ready(ldev))
 		return false;
 
 	return mlx5_esw_multipath_prereq(ldev->pf[MLX5_LAG_P1].dev,
@@ -35,7 +35,7 @@ bool mlx5_lag_is_multipath(struct mlx5_core_dev *dev)
 }
 
 /**
- * Set lag port affinity
+ * mlx5_lag_set_port_affinity
  *
  * @ldev: lag device
  * @port:
@@ -131,7 +131,12 @@ static void mlx5_lag_fib_route_event(struct mlx5_lag *ldev,
 			struct net_device *nh_dev = nh->fib_nh_dev;
 			int i = mlx5_lag_dev_get_netdev_idx(ldev, nh_dev);
 
-			mlx5_lag_set_port_affinity(ldev, ++i);
+			if (i < 0)
+				i = MLX5_LAG_NORMAL_AFFINITY;
+			else
+				++i;
+
+			mlx5_lag_set_port_affinity(ldev, i);
 		}
 		return;
 	}
@@ -198,13 +203,13 @@ static void mlx5_lag_fib_update(struct work_struct *work)
 	/* Protect internal structures from changes */
 	rtnl_lock();
 	switch (fib_work->event) {
-	case FIB_EVENT_ENTRY_REPLACE: /* fall through */
+	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_DEL:
 		mlx5_lag_fib_route_event(ldev, fib_work->event,
 					 fib_work->fen_info.fi);
 		fib_info_put(fib_work->fen_info.fi);
 		break;
-	case FIB_EVENT_NH_ADD: /* fall through */
+	case FIB_EVENT_NH_ADD:
 	case FIB_EVENT_NH_DEL:
 		fib_nh = fib_work->fnh_info.fib_nh;
 		mlx5_lag_fib_nexthop_event(ldev,
@@ -255,7 +260,7 @@ static int mlx5_lag_fib_event(struct notifier_block *nb,
 		return NOTIFY_DONE;
 
 	switch (event) {
-	case FIB_EVENT_ENTRY_REPLACE: /* fall through */
+	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_DEL:
 		fen_info = container_of(info, struct fib_entry_notifier_info,
 					info);
@@ -278,7 +283,7 @@ static int mlx5_lag_fib_event(struct notifier_block *nb,
 		 */
 		fib_info_hold(fib_work->fen_info.fi);
 		break;
-	case FIB_EVENT_NH_ADD: /* fall through */
+	case FIB_EVENT_NH_ADD:
 	case FIB_EVENT_NH_DEL:
 		fnh_info = container_of(info, struct fib_nh_notifier_info,
 					info);
@@ -301,6 +306,11 @@ int mlx5_lag_mp_init(struct mlx5_lag *ldev)
 {
 	struct lag_mp *mp = &ldev->lag_mp;
 	int err;
+
+	/* always clear mfi, as it might become stale when a route delete event
+	 * has been missed
+	 */
+	mp->mfi = NULL;
 
 	if (mp->fib_nb.notifier_call)
 		return 0;
@@ -330,4 +340,5 @@ void mlx5_lag_mp_cleanup(struct mlx5_lag *ldev)
 	unregister_fib_notifier(&init_net, &mp->fib_nb);
 	destroy_workqueue(mp->wq);
 	mp->fib_nb.notifier_call = NULL;
+	mp->mfi = NULL;
 }

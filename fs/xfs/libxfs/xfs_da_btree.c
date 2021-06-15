@@ -78,10 +78,16 @@ kmem_zone_t *xfs_da_state_zone;	/* anchor for state struct zone */
  * Allocate a dir-state structure.
  * We don't put them on the stack since they're large.
  */
-xfs_da_state_t *
-xfs_da_state_alloc(void)
+struct xfs_da_state *
+xfs_da_state_alloc(
+	struct xfs_da_args	*args)
 {
-	return kmem_zone_zalloc(xfs_da_state_zone, KM_NOFS);
+	struct xfs_da_state	*state;
+
+	state = kmem_cache_zalloc(xfs_da_state_zone, GFP_NOFS | __GFP_NOFAIL);
+	state->args = args;
+	state->mp = args->dp->i_mount;
+	return state;
 }
 
 /*
@@ -2139,7 +2145,7 @@ xfs_da_grow_inode_int(
 	struct xfs_trans	*tp = args->trans;
 	struct xfs_inode	*dp = args->dp;
 	int			w = args->whichfork;
-	xfs_rfsblock_t		nblks = dp->i_d.di_nblocks;
+	xfs_rfsblock_t		nblks = dp->i_nblocks;
 	struct xfs_bmbt_irec	map, *mapp;
 	int			nmap, error, got, i, mapi;
 
@@ -2205,7 +2211,7 @@ xfs_da_grow_inode_int(
 	}
 
 	/* account for newly allocated blocks in reserved blocks total */
-	args->total -= dp->i_d.di_nblocks - nblks;
+	args->total -= dp->i_nblocks - nblks;
 
 out_free_map:
 	if (mapp != &map)

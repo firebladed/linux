@@ -162,8 +162,7 @@ EXPORT_SYMBOL_GPL(pnv_pci_set_power_state);
 
 int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 {
-	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
-	struct pnv_phb *phb = hose->private_data;
+	struct pnv_phb *phb = pci_bus_to_pnvhb(pdev->bus);
 	struct msi_desc *entry;
 	struct msi_msg msg;
 	int hwirq;
@@ -211,8 +210,7 @@ int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 
 void pnv_teardown_msi_irqs(struct pci_dev *pdev)
 {
-	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
-	struct pnv_phb *phb = hose->private_data;
+	struct pnv_phb *phb = pci_bus_to_pnvhb(pdev->bus);
 	struct msi_desc *entry;
 	irq_hw_number_t hwirq;
 
@@ -824,19 +822,15 @@ EXPORT_SYMBOL(pnv_pci_get_phb_node);
 
 int pnv_pci_set_tunnel_bar(struct pci_dev *dev, u64 addr, int enable)
 {
-	__be64 val;
-	struct pci_controller *hose;
-	struct pnv_phb *phb;
+	struct pnv_phb *phb = pci_bus_to_pnvhb(dev->bus);
 	u64 tunnel_bar;
+	__be64 val;
 	int rc;
 
 	if (!opal_check_token(OPAL_PCI_GET_PBCQ_TUNNEL_BAR))
 		return -ENXIO;
 	if (!opal_check_token(OPAL_PCI_SET_PBCQ_TUNNEL_BAR))
 		return -ENXIO;
-
-	hose = pci_bus_to_host(dev->bus);
-	phb = hose->private_data;
 
 	mutex_lock(&tunnel_mutex);
 	rc = opal_pci_get_pbcq_tunnel_bar(phb->opal_id, &val);
@@ -931,17 +925,6 @@ void __init pnv_pci_init(void)
 	/* Look for ioda3 built-in PHB4's, we treat them as IODA2 */
 	for_each_compatible_node(np, NULL, "ibm,ioda3-phb")
 		pnv_pci_init_ioda2_phb(np);
-
-	/* Look for NPU PHBs */
-	for_each_compatible_node(np, NULL, "ibm,ioda2-npu-phb")
-		pnv_pci_init_npu_phb(np);
-
-	/*
-	 * Look for NPU2 PHBs which we treat mostly as NPU PHBs with
-	 * the exception of TCE kill which requires an OPAL call.
-	 */
-	for_each_compatible_node(np, NULL, "ibm,ioda2-npu2-phb")
-		pnv_pci_init_npu_phb(np);
 
 	/* Look for NPU2 OpenCAPI PHBs */
 	for_each_compatible_node(np, NULL, "ibm,ioda2-npu2-opencapi-phb")

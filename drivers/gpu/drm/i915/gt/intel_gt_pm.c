@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
@@ -39,6 +38,28 @@ static void user_forcewake(struct intel_gt *gt, bool suspend)
 	intel_gt_pm_put(gt);
 }
 
+static void runtime_begin(struct intel_gt *gt)
+{
+	local_irq_disable();
+	write_seqcount_begin(&gt->stats.lock);
+	gt->stats.start = ktime_get();
+	gt->stats.active = true;
+	write_seqcount_end(&gt->stats.lock);
+	local_irq_enable();
+}
+
+static void runtime_end(struct intel_gt *gt)
+{
+	local_irq_disable();
+	write_seqcount_begin(&gt->stats.lock);
+	gt->stats.active = false;
+	gt->stats.total =
+		ktime_add(gt->stats.total,
+			  ktime_sub(ktime_get(), gt->stats.start));
+	write_seqcount_end(&gt->stats.lock);
+	local_irq_enable();
+}
+
 static int __gt_unpark(struct intel_wakeref *wf)
 {
 	struct intel_gt *gt = container_of(wf, typeof(*gt), wakeref);
@@ -67,6 +88,7 @@ static int __gt_unpark(struct intel_wakeref *wf)
 	i915_pmu_gt_unparked(i915);
 
 	intel_gt_unpark_requests(gt);
+	runtime_begin(gt);
 
 	return 0;
 }
@@ -79,6 +101,7 @@ static int __gt_park(struct intel_wakeref *wf)
 
 	GT_TRACE(gt, "\n");
 
+	runtime_end(gt);
 	intel_gt_park_requests(gt);
 
 	i915_vma_parked(gt);
@@ -106,6 +129,7 @@ static const struct intel_wakeref_ops wf_ops = {
 void intel_gt_pm_init_early(struct intel_gt *gt)
 {
 	intel_wakeref_init(&gt->wakeref, gt->uncore->rpm, &wf_ops);
+	seqcount_mutex_init(&gt->stats.lock, &gt->wakeref.mutex);
 }
 
 void intel_gt_pm_init(struct intel_gt *gt)
@@ -188,7 +212,7 @@ int intel_gt_resume(struct intel_gt *gt)
 	enum intel_engine_id id;
 	int err;
 
-	err = intel_gt_has_init_error(gt);
+	err = intel_gt_has_unrecoverable_error(gt);
 	if (err)
 		return err;
 
@@ -214,8 +238,8 @@ int intel_gt_resume(struct intel_gt *gt)
 	/* Only when the HW is re-initialised, can we replay the requests */
 	err = intel_gt_init_hw(gt);
 	if (err) {
-		drm_err(&gt->i915->drm,
-			"Failed to initialize GPU, declaring it wedged!\n");
+		i915_probe_error(gt->i915,
+				 "Failed to initialize GPU, declaring it wedged!\n");
 		goto err_wedged;
 	}
 
@@ -337,6 +361,30 @@ int intel_gt_runtime_resume(struct intel_gt *gt)
 	intel_ggtt_restore_fences(gt->ggtt);
 
 	return intel_uc_runtime_resume(&gt->uc);
+}
+
+static ktime_t __intel_gt_get_awake_time(const struct intel_gt *gt)
+{
+	ktime_t total = gt->stats.total;
+
+	if (gt->stats.active)
+		total = ktime_add(total,
+				  ktime_sub(ktime_get(), gt->stats.start));
+
+	return total;
+}
+
+ktime_t intel_gt_get_awake_time(const struct intel_gt *gt)
+{
+	unsigned int seq;
+	ktime_t total;
+
+	do {
+		seq = read_seqcount_begin(&gt->stats.lock);
+		total = __intel_gt_get_awake_time(gt);
+	} while (read_seqcount_retry(&gt->stats.lock, seq));
+
+	return total;
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

@@ -115,6 +115,7 @@ struct sdw_intel_slave_id {
  * links
  * @link_list: list to handle interrupts across all links
  * @shim_lock: mutex to handle concurrent rmw access to shared SHIM registers.
+ * @shim_mask: flags to track initialization of SHIM shared registers
  */
 struct sdw_intel_ctx {
 	int count;
@@ -126,6 +127,7 @@ struct sdw_intel_ctx {
 	struct sdw_intel_slave_id *ids;
 	struct list_head link_list;
 	struct mutex shim_lock; /* lock for access to shared SHIM registers */
+	u32 shim_mask;
 };
 
 /**
@@ -184,5 +186,7 @@ void sdw_intel_exit(struct sdw_intel_ctx *ctx);
 void sdw_intel_enable_irq(void __iomem *mmio_base, bool enable);
 
 irqreturn_t sdw_intel_thread(int irq, void *dev_id);
+
+#define SDW_INTEL_QUIRK_MASK_BUS_DISABLE      BIT(1)
 
 #endif

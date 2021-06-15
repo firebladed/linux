@@ -1,5 +1,5 @@
 /*
-* Copyright 2016 Advanced Micro Devices, Inc.
+* Copyright 2016-2020 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -109,6 +109,7 @@ void dcn10_program_pipe(
 void dcn10_program_gamut_remap(struct pipe_ctx *pipe_ctx);
 void dcn10_init_hw(struct dc *dc);
 void dcn10_init_pipes(struct dc *dc, struct dc_state *context);
+void dcn10_power_down_on_boot(struct dc *dc);
 enum dc_status dce110_apply_ctx_to_hw(
 		struct dc *dc,
 		struct dc_state *context);
@@ -118,6 +119,11 @@ void dcn10_update_pending_status(struct pipe_ctx *pipe_ctx);
 void dce110_power_down(struct dc *dc);
 void dce110_enable_accelerated_mode(struct dc *dc, struct dc_state *context);
 void dcn10_enable_timing_synchronization(
+		struct dc *dc,
+		int group_index,
+		int group_size,
+		struct pipe_ctx *grouped_pipes[]);
+void dcn10_enable_vblanks_synchronization(
 		struct dc *dc,
 		int group_index,
 		int group_size,
@@ -139,8 +145,7 @@ bool dcn10_dummy_display_power_gating(
 		struct dc_bios *dcb,
 		enum pipe_gating_control power_gating);
 void dcn10_set_drr(struct pipe_ctx **pipe_ctx,
-		int num_pipes, unsigned int vmin, unsigned int vmax,
-		unsigned int vmid, unsigned int vmid_frame_number);
+		int num_pipes, struct dc_crtc_timing_adjust adjust);
 void dcn10_get_position(struct pipe_ctx **pipe_ctx,
 		int num_pipes,
 		struct crtc_position *position);
@@ -162,6 +167,8 @@ void dcn10_wait_for_mpcc_disconnect(
 void dce110_edp_backlight_control(
 		struct dc_link *link,
 		bool enable);
+void dce110_edp_wait_for_T12(
+		struct dc_link *link);
 void dce110_edp_power_control(
 		struct dc_link *link,
 		bool power_up);
@@ -193,7 +200,15 @@ void dcn10_get_surface_visual_confirm_color(
 void dcn10_get_hdr_visual_confirm_color(
 		struct pipe_ctx *pipe_ctx,
 		struct tg_color *color);
+bool dcn10_disconnect_pipes(
+		struct dc *dc,
+		struct dc_state *context);
+
+void dcn10_wait_for_pending_cleared(struct dc *dc,
+		struct dc_state *context);
 void dcn10_set_hdr_multiplier(struct pipe_ctx *pipe_ctx);
 void dcn10_verify_allow_pstate_change_high(struct dc *dc);
+
+void dcn10_get_dcc_en_bits(struct dc *dc, int *dcc_en_bits);
 
 #endif /* __DC_HWSS_DCN10_H__ */

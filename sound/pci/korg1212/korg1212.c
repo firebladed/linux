@@ -388,7 +388,6 @@ struct snd_korg1212 {
 
 MODULE_DESCRIPTION("korg1212");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("{{KORG,korg1212}}");
 MODULE_FIRMWARE("korg/k1212.dsp");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;     /* Index 0-MAX */
@@ -2149,7 +2148,9 @@ static int snd_korg1212_create(struct snd_card *card, struct pci_dev *pci,
 {
         int err, rc;
         unsigned int i;
-	unsigned ioport_size, iomem_size, iomem2_size;
+	unsigned iomem_size;
+	__maybe_unused unsigned ioport_size;
+	__maybe_unused unsigned iomem2_size;
         struct snd_korg1212 * korg1212;
 	const struct firmware *dsp_code;
 

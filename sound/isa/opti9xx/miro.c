@@ -33,9 +33,6 @@
 MODULE_AUTHOR("Martin Langer <martin-langer@gmx.de>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Miro miroSOUND PCM1 pro, PCM12, PCM20 Radio");
-MODULE_SUPPORTED_DEVICE("{{Miro,miroSOUND PCM1 pro}, "
-			"{Miro,miroSOUND PCM12}, "
-			"{Miro,miroSOUND PCM20 Radio}}");
 
 static int index = SNDRV_DEFAULT_IDX1;		/* Index 0-MAX */
 static char *id = SNDRV_DEFAULT_STR1;		/* ID for this card */
@@ -163,13 +160,13 @@ static int aci_busy_wait(struct snd_miro_aci *aci)
 			switch (timeout-ACI_MINTIME) {
 			case 0 ... 9:
 				out /= 10;
-				/* fall through */
+				fallthrough;
 			case 10 ... 19:
 				out /= 10;
-				/* fall through */
+				fallthrough;
 			case 20 ... 30:
 				out /= 10;
-				/* fall through */
+				fallthrough;
 			default:
 				set_current_state(TASK_UNINTERRUPTIBLE);
 				schedule_timeout(out);
@@ -824,7 +821,7 @@ static unsigned char snd_miro_read(struct snd_miro *chip,
 			retval = inb(chip->mc_base + 9);
 			break;
 		}
-		/* fall through */
+		fallthrough;
 
 	case OPTi9XX_HW_82C929:
 		retval = inb(chip->mc_base + reg);
@@ -854,7 +851,7 @@ static void snd_miro_write(struct snd_miro *chip, unsigned char reg,
 			outb(value, chip->mc_base + 9);
 			break;
 		}
-		/* fall through */
+		fallthrough;
 
 	case OPTi9XX_HW_82C929:
 		outb(value, chip->mc_base + reg);
@@ -1480,11 +1477,10 @@ static int snd_miro_isa_probe(struct device *devptr, unsigned int n)
 	return 0;
 }
 
-static int snd_miro_isa_remove(struct device *devptr,
+static void snd_miro_isa_remove(struct device *devptr,
 			       unsigned int dev)
 {
 	snd_card_free(dev_get_drvdata(devptr));
-	return 0;
 }
 
 #define DEV_NAME "miro"

@@ -766,7 +766,7 @@ static void snd_cs46xx_set_capture_sample_rate(struct snd_cs46xx *chip, unsigned
 		rate = 48000 / 9;
 
 	/*
-	 *  We can not capture at at rate greater than the Input Rate (48000).
+	 *  We can not capture at a rate greater than the Input Rate (48000).
 	 *  Return an error if an attempt is made to stray outside that limit.
 	 */
 	if (rate > 48000)
@@ -813,7 +813,7 @@ static void snd_cs46xx_set_capture_sample_rate(struct snd_cs46xx *chip, unsigned
 	correctionPerGOF = tmp1 / GOF_PER_SEC;
 	tmp1 -= correctionPerGOF * GOF_PER_SEC;
 	correctionPerSec = tmp1;
-	initialDelay = ((48000 * 24) + rate - 1) / rate;
+	initialDelay = DIV_ROUND_UP(48000 * 24, rate);
 
 	/*
 	 *  Fill in the VariDecimate control block.

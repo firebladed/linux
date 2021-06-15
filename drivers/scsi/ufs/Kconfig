@@ -39,7 +39,7 @@ config SCSI_UFSHCD
 	select DEVFREQ_GOV_SIMPLE_ONDEMAND
 	select NLS
 	help
-	This selects the support for UFS devices in Linux, say Y and make
+	  This selects the support for UFS devices in Linux, say Y and make
 	  sure that you know the name of your UFS host adapter (the card
 	  inside your computer that "speaks" the UFS protocol, also
 	  called UFS Host Controller), because you will be asked for it.
@@ -54,8 +54,8 @@ config SCSI_UFSHCD_PCI
 	tristate "PCI bus based UFS Controller support"
 	depends on SCSI_UFSHCD && PCI
 	help
-	This selects the PCI UFS Host Controller Interface. Select this if
-	you have UFS Host Controller with PCI Interface.
+	  This selects the PCI UFS Host Controller Interface. Select this if
+	  you have UFS Host Controller with PCI Interface.
 
 	  If you have a controller with this interface, say Y or M here.
 
@@ -72,11 +72,12 @@ config SCSI_UFS_DWC_TC_PCI
 config SCSI_UFSHCD_PLATFORM
 	tristate "Platform bus based UFS Controller support"
 	depends on SCSI_UFSHCD
+	depends on HAS_IOMEM
 	help
-	This selects the UFS host controller support. Select this if
-	you have an UFS controller on Platform bus.
+	  This selects the UFS host controller support. Select this if
+	  you have an UFS controller on Platform bus.
 
-	If you have a controller with this interface, say Y or M here.
+	  If you have a controller with this interface, say Y or M here.
 
 	  If unsure, say N.
 
@@ -84,7 +85,7 @@ config SCSI_UFS_CDNS_PLATFORM
 	tristate "Cadence UFS Controller platform driver"
 	depends on SCSI_UFSHCD_PLATFORM
 	help
-	This selects the Cadence-specific additions to UFSHCD platform driver.
+	  This selects the Cadence-specific additions to UFSHCD platform driver.
 
 	  If unsure, say N.
 
@@ -99,6 +100,7 @@ config SCSI_UFS_DWC_TC_PLATFORM
 config SCSI_UFS_QCOM
 	tristate "QCOM specific hooks to UFS controller platform driver"
 	depends on SCSI_UFSHCD_PLATFORM && ARCH_QCOM
+	select QCOM_SCM if SCSI_UFS_CRYPTO
 	select RESET_CONTROLLER
 	help
 	  This selects the QCOM specific additions to UFSHCD platform driver.
@@ -160,3 +162,23 @@ config SCSI_UFS_BSG
 
 	  Select this if you need a bsg device node for your UFS controller.
 	  If unsure, say N.
+
+config SCSI_UFS_EXYNOS
+	tristate "EXYNOS specific hooks to UFS controller platform driver"
+	depends on SCSI_UFSHCD_PLATFORM && (ARCH_EXYNOS || COMPILE_TEST)
+	help
+	  This selects the EXYNOS specific additions to UFSHCD platform driver.
+	  UFS host on EXYNOS includes HCI and UNIPRO layer, and associates with
+	  UFS-PHY driver.
+
+	  Select this if you have UFS host controller on EXYNOS chipset.
+	  If unsure, say N.
+
+config SCSI_UFS_CRYPTO
+	bool "UFS Crypto Engine Support"
+	depends on SCSI_UFSHCD && BLK_INLINE_ENCRYPTION
+	help
+	  Enable Crypto Engine Support in UFS.
+	  Enabling this makes it possible for the kernel to use the crypto
+	  capabilities of the UFS device (if present) to perform crypto
+	  operations on data being transferred to/from the device.

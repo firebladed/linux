@@ -73,7 +73,7 @@ xfs_dir3_leafn_check(
 	} else if (leafhdr.magic != XFS_DIR2_LEAFN_MAGIC)
 		return __this_address;
 
-	return xfs_dir3_leaf_check_int(dp->i_mount, &leafhdr, leaf);
+	return xfs_dir3_leaf_check_int(dp->i_mount, &leafhdr, leaf, false);
 }
 
 static inline void
@@ -441,7 +441,7 @@ xfs_dir2_leaf_to_node(
 	leaf = lbp->b_addr;
 	ltp = xfs_dir2_leaf_tail_p(args->geo, leaf);
 	if (be32_to_cpu(ltp->bestcount) >
-				(uint)dp->i_d.di_size / args->geo->blksize) {
+				(uint)dp->i_disk_size / args->geo->blksize) {
 		xfs_buf_mark_corrupt(lbp);
 		return -EFSCORRUPTED;
 	}
@@ -2015,9 +2015,7 @@ xfs_dir2_node_addname(
 	/*
 	 * Allocate and initialize the state (btree cursor).
 	 */
-	state = xfs_da_state_alloc();
-	state->args = args;
-	state->mp = args->dp->i_mount;
+	state = xfs_da_state_alloc(args);
 	/*
 	 * Look up the name.  We're not supposed to find it, but
 	 * this gives us the insertion point.
@@ -2086,9 +2084,8 @@ xfs_dir2_node_lookup(
 	/*
 	 * Allocate and initialize the btree cursor.
 	 */
-	state = xfs_da_state_alloc();
-	state->args = args;
-	state->mp = args->dp->i_mount;
+	state = xfs_da_state_alloc(args);
+
 	/*
 	 * Fill in the path to the entry in the cursor.
 	 */
@@ -2139,9 +2136,7 @@ xfs_dir2_node_removename(
 	/*
 	 * Allocate and initialize the btree cursor.
 	 */
-	state = xfs_da_state_alloc();
-	state->args = args;
-	state->mp = args->dp->i_mount;
+	state = xfs_da_state_alloc(args);
 
 	/* Look up the entry we're deleting, set up the cursor. */
 	error = xfs_da3_node_lookup_int(state, &rval);
@@ -2206,9 +2201,7 @@ xfs_dir2_node_replace(
 	/*
 	 * Allocate and initialize the btree cursor.
 	 */
-	state = xfs_da_state_alloc();
-	state->args = args;
-	state->mp = args->dp->i_mount;
+	state = xfs_da_state_alloc(args);
 
 	/*
 	 * We have to save new inode number and ftype since

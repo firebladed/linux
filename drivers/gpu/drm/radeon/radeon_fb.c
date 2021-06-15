@@ -119,7 +119,7 @@ static void radeonfb_destroy_pinned_object(struct drm_gem_object *gobj)
 		radeon_bo_unpin(rbo);
 		radeon_bo_unreserve(rbo);
 	}
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 }
 
 static int radeonfb_create_pinned_object(struct radeon_fbdev *rfbdev,
@@ -290,7 +290,7 @@ static int radeonfb_create(struct drm_fb_helper *helper,
 	DRM_INFO("fb depth is %d\n", fb->format->depth);
 	DRM_INFO("   pitch is %d\n", fb->pitches[0]);
 
-	vga_switcheroo_client_fb_set(rdev->ddev->pdev, info);
+	vga_switcheroo_client_fb_set(rdev->pdev, info);
 	return 0;
 
 out:
@@ -298,7 +298,7 @@ out:
 
 	}
 	if (fb && ret) {
-		drm_gem_object_put_unlocked(gobj);
+		drm_gem_object_put(gobj);
 		drm_framebuffer_unregister_private(fb);
 		drm_framebuffer_cleanup(fb);
 		kfree(fb);

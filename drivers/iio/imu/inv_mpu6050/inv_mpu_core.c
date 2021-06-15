@@ -161,6 +161,14 @@ static const struct inv_mpu6050_hw hw_info[] = {
 		.temp = {INV_MPU6500_TEMP_OFFSET, INV_MPU6500_TEMP_SCALE},
 	},
 	{
+		.whoami = INV_MPU6880_WHOAMI_VALUE,
+		.name = "MPU6880",
+		.reg = &reg_set_6500,
+		.config = &chip_config_6500,
+		.fifo_size = 4096,
+		.temp = {INV_MPU6500_TEMP_OFFSET, INV_MPU6500_TEMP_SCALE},
+	},
+	{
 		.whoami = INV_MPU6000_WHOAMI_VALUE,
 		.name = "MPU6000",
 		.reg = &reg_set_6050,
@@ -433,7 +441,7 @@ static int inv_mpu6050_set_gyro_fsr(struct inv_mpu6050_state *st,
 	return regmap_write(st->map, st->reg->gyro_config, data);
 }
 
-/**
+/*
  *  inv_mpu6050_set_lpf_regs() - set low pass filter registers, chip dependent
  *
  *  MPU60xx/MPU9150 use only 1 register for accelerometer + gyroscope
@@ -467,7 +475,7 @@ static int inv_mpu6050_set_lpf_regs(struct inv_mpu6050_state *st,
 	return regmap_write(st->map, st->reg->accel_lpf, val);
 }
 
-/**
+/*
  *  inv_mpu6050_init_config() - Initialize hardware, disable FIFO.
  *
  *  Initial configuration:
@@ -723,12 +731,16 @@ inv_mpu6050_read_raw(struct iio_dev *indio_dev,
 	}
 }
 
-static int inv_mpu6050_write_gyro_scale(struct inv_mpu6050_state *st, int val)
+static int inv_mpu6050_write_gyro_scale(struct inv_mpu6050_state *st, int val,
+					int val2)
 {
 	int result, i;
 
+	if (val != 0)
+		return -EINVAL;
+
 	for (i = 0; i < ARRAY_SIZE(gyro_scale_6050); ++i) {
-		if (gyro_scale_6050[i] == val) {
+		if (gyro_scale_6050[i] == val2) {
 			result = inv_mpu6050_set_gyro_fsr(st, i);
 			if (result)
 				return result;
@@ -759,13 +771,17 @@ static int inv_write_raw_get_fmt(struct iio_dev *indio_dev,
 	return -EINVAL;
 }
 
-static int inv_mpu6050_write_accel_scale(struct inv_mpu6050_state *st, int val)
+static int inv_mpu6050_write_accel_scale(struct inv_mpu6050_state *st, int val,
+					 int val2)
 {
 	int result, i;
 	u8 d;
 
+	if (val != 0)
+		return -EINVAL;
+
 	for (i = 0; i < ARRAY_SIZE(accel_scale); ++i) {
-		if (accel_scale[i] == val) {
+		if (accel_scale[i] == val2) {
 			d = (i << INV_MPU6050_ACCL_CONFIG_FSR_SHIFT);
 			result = regmap_write(st->map, st->reg->accl_config, d);
 			if (result)
@@ -806,10 +822,10 @@ static int inv_mpu6050_write_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_SCALE:
 		switch (chan->type) {
 		case IIO_ANGL_VEL:
-			result = inv_mpu6050_write_gyro_scale(st, val2);
+			result = inv_mpu6050_write_gyro_scale(st, val, val2);
 			break;
 		case IIO_ACCEL:
-			result = inv_mpu6050_write_accel_scale(st, val2);
+			result = inv_mpu6050_write_accel_scale(st, val, val2);
 			break;
 		default:
 			result = -EINVAL;
@@ -847,7 +863,7 @@ error_write_raw_unlock:
 	return result;
 }
 
-/**
+/*
  *  inv_mpu6050_set_lpf() - set low pass filer based on fifo rate.
  *
  *                  Based on the Nyquist principle, the bandwidth of the low
@@ -884,7 +900,7 @@ static int inv_mpu6050_set_lpf(struct inv_mpu6050_state *st, int rate)
 	return 0;
 }
 
-/**
+/*
  * inv_mpu6050_fifo_rate_store() - Set fifo rate.
  */
 static ssize_t
@@ -945,7 +961,7 @@ fifo_rate_fail_unlock:
 	return count;
 }
 
-/**
+/*
  * inv_fifo_rate_show() - Get the current sampling rate.
  */
 static ssize_t
@@ -962,7 +978,7 @@ inv_fifo_rate_show(struct device *dev, struct device_attribute *attr,
 	return scnprintf(buf, PAGE_SIZE, "%u\n", fifo_rate);
 }
 
-/**
+/*
  * inv_attr_show() - calling this function will show current
  *                    parameters.
  *
@@ -1275,7 +1291,7 @@ static const struct iio_info mpu_info = {
 	.debugfs_reg_access = &inv_mpu6050_reg_access,
 };
 
-/**
+/*
  *  inv_check_and_setup_chip() - check and setup chip.
  */
 static int inv_check_and_setup_chip(struct inv_mpu6050_state *st)
@@ -1323,6 +1339,7 @@ static int inv_check_and_setup_chip(struct inv_mpu6050_state *st)
 	case INV_MPU6000:
 	case INV_MPU6500:
 	case INV_MPU6515:
+	case INV_MPU6880:
 	case INV_MPU9250:
 	case INV_MPU9255:
 		/* reset signal path (required for spi connection) */
@@ -1449,15 +1466,21 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 		st->plat_data = *pdata;
 	}
 
-	desc = irq_get_irq_data(irq);
-	if (!desc) {
-		dev_err(dev, "Could not find IRQ %d\n", irq);
-		return -EINVAL;
+	if (irq > 0) {
+		desc = irq_get_irq_data(irq);
+		if (!desc) {
+			dev_err(dev, "Could not find IRQ %d\n", irq);
+			return -EINVAL;
+		}
+
+		irq_type = irqd_get_trigger_type(desc);
+		if (!irq_type)
+			irq_type = IRQF_TRIGGER_RISING;
+	} else {
+		/* Doesn't really matter, use the default */
+		irq_type = IRQF_TRIGGER_RISING;
 	}
 
-	irq_type = irqd_get_trigger_type(desc);
-	if (!irq_type)
-		irq_type = IRQF_TRIGGER_RISING;
 	if (irq_type & IRQF_TRIGGER_RISING)	// rising or both-edge
 		st->irq_mask = INV_MPU6050_ACTIVE_HIGH;
 	else if (irq_type == IRQF_TRIGGER_FALLING)
@@ -1475,22 +1498,14 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 	}
 
 	st->vdd_supply = devm_regulator_get(dev, "vdd");
-	if (IS_ERR(st->vdd_supply)) {
-		if (PTR_ERR(st->vdd_supply) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get vdd regulator %d\n",
-				(int)PTR_ERR(st->vdd_supply));
-
-		return PTR_ERR(st->vdd_supply);
-	}
+	if (IS_ERR(st->vdd_supply))
+		return dev_err_probe(dev, PTR_ERR(st->vdd_supply),
+				     "Failed to get vdd regulator\n");
 
 	st->vddio_supply = devm_regulator_get(dev, "vddio");
-	if (IS_ERR(st->vddio_supply)) {
-		if (PTR_ERR(st->vddio_supply) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get vddio regulator %d\n",
-				(int)PTR_ERR(st->vddio_supply));
-
-		return PTR_ERR(st->vddio_supply);
-	}
+	if (IS_ERR(st->vddio_supply))
+		return dev_err_probe(dev, PTR_ERR(st->vddio_supply),
+				     "Failed to get vddio regulator\n");
 
 	result = regulator_enable(st->vdd_supply);
 	if (result) {
@@ -1530,7 +1545,6 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 	}
 
 	dev_set_drvdata(dev, indio_dev);
-	indio_dev->dev.parent = dev;
 	/* name will be NULL when enumerated via ACPI */
 	if (name)
 		indio_dev->name = name;
@@ -1591,20 +1605,26 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 	}
 
 	indio_dev->info = &mpu_info;
-	indio_dev->modes = INDIO_BUFFER_TRIGGERED;
 
-	result = devm_iio_triggered_buffer_setup(dev, indio_dev,
-						 iio_pollfunc_store_time,
-						 inv_mpu6050_read_fifo,
-						 NULL);
-	if (result) {
-		dev_err(dev, "configure buffer fail %d\n", result);
-		return result;
-	}
-	result = inv_mpu6050_probe_trigger(indio_dev, irq_type);
-	if (result) {
-		dev_err(dev, "trigger probe fail %d\n", result);
-		return result;
+	if (irq > 0) {
+		/*
+		 * The driver currently only supports buffered capture with its
+		 * own trigger. So no IRQ, no trigger, no buffer
+		 */
+		result = devm_iio_triggered_buffer_setup(dev, indio_dev,
+							 iio_pollfunc_store_time,
+							 inv_mpu6050_read_fifo,
+							 NULL);
+		if (result) {
+			dev_err(dev, "configure buffer fail %d\n", result);
+			return result;
+		}
+
+		result = inv_mpu6050_probe_trigger(indio_dev, irq_type);
+		if (result) {
+			dev_err(dev, "trigger probe fail %d\n", result);
+			return result;
+		}
 	}
 
 	result = devm_iio_device_register(dev, indio_dev);

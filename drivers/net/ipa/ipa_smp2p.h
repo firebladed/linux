@@ -15,7 +15,7 @@ struct ipa;
  * @ipa:	IPA pointer
  * @modem_init:	Whether the modem is responsible for GSI initialization
  *
- * @Return:	0 if successful, or a negative error code
+ * Return:	0 if successful, or a negative error code
  *
  */
 int ipa_smp2p_init(struct ipa *ipa, bool modem_init);
@@ -28,7 +28,7 @@ void ipa_smp2p_exit(struct ipa *ipa);
 
 /**
  * ipa_smp2p_disable() - Prevent "ipa-setup-ready" interrupt handling
- * @IPA:	IPA pointer
+ * @ipa:	IPA pointer
  *
  * Prevent handling of the "setup ready" interrupt from the modem.
  * This is used before initiating shutdown of the driver.

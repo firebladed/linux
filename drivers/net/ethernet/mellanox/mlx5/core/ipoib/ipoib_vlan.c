@@ -276,14 +276,12 @@ static int mlx5i_pkey_change_mtu(struct net_device *netdev, int new_mtu)
 
 /* Called directly after IPoIB netdevice was created to initialize SW structs */
 static int mlx5i_pkey_init(struct mlx5_core_dev *mdev,
-			   struct net_device *netdev,
-			   const struct mlx5e_profile *profile,
-			   void *ppriv)
+			   struct net_device *netdev)
 {
 	struct mlx5e_priv *priv  = mlx5i_epriv(netdev);
 	int err;
 
-	err = mlx5i_init(mdev, netdev, profile, ppriv);
+	err = mlx5i_init(mdev, netdev);
 	if (err)
 		return err;
 
@@ -349,10 +347,10 @@ static const struct mlx5e_profile mlx5i_pkey_nic_profile = {
 	.disable	   = NULL,
 	.update_rx	   = mlx5i_update_nic_rx,
 	.update_stats	   = NULL,
-	.rx_handlers.handle_rx_cqe       = mlx5i_handle_rx_cqe,
-	.rx_handlers.handle_rx_cqe_mpwqe = NULL, /* Not supported */
+	.rx_handlers       = &mlx5i_rx_handlers,
 	.max_tc		   = MLX5I_MAX_NUM_TC,
 	.rq_groups	   = MLX5E_NUM_RQ_GROUPS(REGULAR),
+	.rx_ptp_support	   = false,
 };
 
 const struct mlx5e_profile *mlx5i_pkey_get_profile(void)

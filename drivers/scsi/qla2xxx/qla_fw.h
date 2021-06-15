@@ -1,8 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * QLogic Fibre Channel HBA Driver
  * Copyright (c)  2003-2014 QLogic Corporation
- *
- * See LICENSE.qla2xxx for copyright and licensing details.
  */
 #ifndef __QLA_FW_H
 #define __QLA_FW_H
@@ -610,7 +609,7 @@ struct sts_entry_24xx {
 	__le32	residual_len;		/* FW calc residual transfer length. */
 
 	union {
-		uint16_t reserved_1;
+		__le16 reserved_1;
 		__le16	nvme_rsp_pyld_len;
 	};
 
@@ -619,7 +618,7 @@ struct sts_entry_24xx {
 #define SF_NVME_ERSP            BIT_6
 #define SF_FCP_RSP_DMA		BIT_0
 
-	__le16	retry_delay;
+	__le16	status_qualifier;
 	__le16	scsi_status;		/* SCSI status. */
 #define SS_CONFIRMATION_REQ		BIT_12
 
@@ -722,6 +721,8 @@ struct ct_entry_24xx {
 
 	struct dsd64 dsd[2];
 };
+
+#define PURX_ELS_HEADER_SIZE	0x18
 
 /*
  * ISP queue - PUREX IOCB entry structure definition
@@ -981,11 +982,18 @@ struct abort_entry_24xx {
 
 	uint32_t handle;		/* System handle. */
 
-	__le16	nport_handle;		/* N_PORT handle. */
-					/* or Completion status. */
+	union {
+		__le16 nport_handle;            /* N_PORT handle. */
+		__le16 comp_status;             /* Completion status. */
+	};
 
 	__le16	options;		/* Options. */
 #define AOF_NO_ABTS		BIT_0	/* Do not send any ABTS. */
+#define AOF_NO_RRQ		BIT_1   /* Do not send RRQ. */
+#define AOF_ABTS_TIMEOUT	BIT_2   /* Disable logout on ABTS timeout. */
+#define AOF_ABTS_RTY_CNT	BIT_3   /* Use driver specified retry count. */
+#define AOF_RSP_TIMEOUT		BIT_4   /* Use specified response timeout. */
+
 
 	uint32_t handle_to_abort;	/* System handle to abort. */
 
@@ -994,8 +1002,20 @@ struct abort_entry_24xx {
 
 	uint8_t port_id[3];		/* PortID of destination port. */
 	uint8_t vp_index;
-
-	uint8_t reserved_2[12];
+	u8	reserved_2[4];
+	union {
+		struct {
+			__le16 abts_rty_cnt;
+			__le16 rsp_timeout;
+		} drv;
+		struct {
+			u8	ba_rjt_vendorUnique;
+			u8	ba_rjt_reasonCodeExpl;
+			u8	ba_rjt_reasonCode;
+			u8	reserved_3;
+		} fw;
+	};
+	u8	reserved_4[4];
 };
 
 #define ABTS_RCV_TYPE		0x54
@@ -2020,7 +2040,9 @@ struct nvram_81xx {
 	 * BIT 0    = Extended BB credits for LR
 	 * BIT 1    = Virtual Fabric Enable
 	 * BIT 2-5  = Distance Support if BIT 0 is on
-	 * BIT 6-15 = Unused
+	 * BIT 6    = Prefer FCP
+	 * BIT 7    = SCM Disabled if BIT is set (1)
+	 * BIT 8-15 = Unused
 	 */
 	uint16_t enhanced_features;
 

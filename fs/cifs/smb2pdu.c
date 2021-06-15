@@ -152,117 +152,6 @@ out:
 	return;
 }
 
-#ifdef CONFIG_CIFS_DFS_UPCALL
-static int __smb2_reconnect(const struct nls_table *nlsc,
-			    struct cifs_tcon *tcon)
-{
-	int rc;
-	struct TCP_Server_Info *server = tcon->ses->server;
-	struct dfs_cache_tgt_list tl;
-	struct dfs_cache_tgt_iterator *it = NULL;
-	char *tree;
-	const char *tcp_host;
-	size_t tcp_host_len;
-	const char *dfs_host;
-	size_t dfs_host_len;
-
-	tree = kzalloc(MAX_TREE_SIZE, GFP_KERNEL);
-	if (!tree)
-		return -ENOMEM;
-
-	if (!tcon->dfs_path) {
-		if (tcon->ipc) {
-			scnprintf(tree, MAX_TREE_SIZE, "\\\\%s\\IPC$",
-				  server->hostname);
-			rc = SMB2_tcon(0, tcon->ses, tree, tcon, nlsc);
-		} else {
-			rc = SMB2_tcon(0, tcon->ses, tcon->treeName, tcon,
-				       nlsc);
-		}
-		goto out;
-	}
-
-	rc = dfs_cache_noreq_find(tcon->dfs_path + 1, NULL, &tl);
-	if (rc)
-		goto out;
-
-	extract_unc_hostname(server->hostname, &tcp_host, &tcp_host_len);
-
-	for (it = dfs_cache_get_tgt_iterator(&tl); it;
-	     it = dfs_cache_get_next_tgt(&tl, it)) {
-		const char *share, *prefix;
-		size_t share_len, prefix_len;
-		bool target_match;
-
-		rc = dfs_cache_get_tgt_share(it, &share, &share_len, &prefix,
-					     &prefix_len);
-		if (rc) {
-			cifs_dbg(VFS, "%s: failed to parse target share %d\n",
-				 __func__, rc);
-			continue;
-		}
-
-		extract_unc_hostname(share, &dfs_host, &dfs_host_len);
-
-		if (dfs_host_len != tcp_host_len
-		    || strncasecmp(dfs_host, tcp_host, dfs_host_len) != 0) {
-			cifs_dbg(FYI, "%s: %.*s doesn't match %.*s\n",
-				 __func__,
-				 (int)dfs_host_len, dfs_host,
-				 (int)tcp_host_len, tcp_host);
-
-			rc = match_target_ip(server, dfs_host, dfs_host_len,
-					     &target_match);
-			if (rc) {
-				cifs_dbg(VFS, "%s: failed to match target ip: %d\n",
-					 __func__, rc);
-				break;
-			}
-
-			if (!target_match) {
-				cifs_dbg(FYI, "%s: skipping target\n", __func__);
-				continue;
-			}
-		}
-
-		if (tcon->ipc) {
-			scnprintf(tree, MAX_TREE_SIZE, "\\\\%.*s\\IPC$",
-				  (int)share_len, share);
-			rc = SMB2_tcon(0, tcon->ses, tree, tcon, nlsc);
-		} else {
-			scnprintf(tree, MAX_TREE_SIZE, "\\%.*s", (int)share_len,
-				  share);
-			rc = SMB2_tcon(0, tcon->ses, tree, tcon, nlsc);
-			if (!rc) {
-				rc = update_super_prepath(tcon, prefix,
-							  prefix_len);
-				break;
-			}
-		}
-		if (rc == -EREMOTE)
-			break;
-	}
-
-	if (!rc) {
-		if (it)
-			rc = dfs_cache_noreq_update_tgthint(tcon->dfs_path + 1,
-							    it);
-		else
-			rc = -ENOENT;
-	}
-	dfs_cache_free_tgts(&tl);
-out:
-	kfree(tree);
-	return rc;
-}
-#else
-static inline int __smb2_reconnect(const struct nls_table *nlsc,
-				   struct cifs_tcon *tcon)
-{
-	return SMB2_tcon(0, tcon->ses, tcon->treeName, tcon, nlsc);
-}
-#endif
-
 static int
 smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon,
 	       struct TCP_Server_Info *server)
@@ -409,7 +298,7 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon,
 	if (tcon->use_persistent)
 		tcon->need_reopen_files = true;
 
-	rc = __smb2_reconnect(nls_codepage, tcon);
+	rc = cifs_tree_connect(0, tcon, nls_codepage);
 	mutex_unlock(&tcon->ses->session_mutex);
 
 	cifs_dbg(FYI, "reconnect tcon rc = %d\n", rc);
@@ -538,8 +427,8 @@ build_preauth_ctxt(struct smb2_preauth_neg_context *pneg_ctxt)
 	pneg_ctxt->ContextType = SMB2_PREAUTH_INTEGRITY_CAPABILITIES;
 	pneg_ctxt->DataLength = cpu_to_le16(38);
 	pneg_ctxt->HashAlgorithmCount = cpu_to_le16(1);
-	pneg_ctxt->SaltLength = cpu_to_le16(SMB311_SALT_SIZE);
-	get_random_bytes(pneg_ctxt->Salt, SMB311_SALT_SIZE);
+	pneg_ctxt->SaltLength = cpu_to_le16(SMB311_LINUX_CLIENT_SALT_SIZE);
+	get_random_bytes(pneg_ctxt->Salt, SMB311_LINUX_CLIENT_SALT_SIZE);
 	pneg_ctxt->HashAlgorithms = SMB2_PREAUTH_INTEGRITY_SHA512;
 }
 
@@ -560,10 +449,22 @@ static void
 build_encrypt_ctxt(struct smb2_encryption_neg_context *pneg_ctxt)
 {
 	pneg_ctxt->ContextType = SMB2_ENCRYPTION_CAPABILITIES;
-	pneg_ctxt->DataLength = cpu_to_le16(6); /* Cipher Count + two ciphers */
-	pneg_ctxt->CipherCount = cpu_to_le16(2);
-	pneg_ctxt->Ciphers[0] = SMB2_ENCRYPTION_AES128_GCM;
-	pneg_ctxt->Ciphers[1] = SMB2_ENCRYPTION_AES128_CCM;
+	if (require_gcm_256) {
+		pneg_ctxt->DataLength = cpu_to_le16(4); /* Cipher Count + 1 cipher */
+		pneg_ctxt->CipherCount = cpu_to_le16(1);
+		pneg_ctxt->Ciphers[0] = SMB2_ENCRYPTION_AES256_GCM;
+	} else if (enable_gcm_256) {
+		pneg_ctxt->DataLength = cpu_to_le16(8); /* Cipher Count + 3 ciphers */
+		pneg_ctxt->CipherCount = cpu_to_le16(3);
+		pneg_ctxt->Ciphers[0] = SMB2_ENCRYPTION_AES128_GCM;
+		pneg_ctxt->Ciphers[1] = SMB2_ENCRYPTION_AES256_GCM;
+		pneg_ctxt->Ciphers[2] = SMB2_ENCRYPTION_AES128_CCM;
+	} else {
+		pneg_ctxt->DataLength = cpu_to_le16(6); /* Cipher Count + 2 ciphers */
+		pneg_ctxt->CipherCount = cpu_to_le16(2);
+		pneg_ctxt->Ciphers[0] = SMB2_ENCRYPTION_AES128_GCM;
+		pneg_ctxt->Ciphers[1] = SMB2_ENCRYPTION_AES128_CCM;
+	}
 }
 
 static unsigned int
@@ -665,6 +566,9 @@ static void decode_preauth_context(struct smb2_preauth_neg_context *ctxt)
 	if (len < MIN_PREAUTH_CTXT_DATA_LEN) {
 		pr_warn_once("server sent bad preauth context\n");
 		return;
+	} else if (len < MIN_PREAUTH_CTXT_DATA_LEN + le16_to_cpu(ctxt->SaltLength)) {
+		pr_warn_once("server sent invalid SaltLength\n");
+		return;
 	}
 	if (le16_to_cpu(ctxt->HashAlgorithmCount) != 1)
 		pr_warn_once("Invalid SMB3 hash algorithm count\n");
@@ -709,8 +613,29 @@ static int decode_encrypt_ctx(struct TCP_Server_Info *server,
 		return -EINVAL;
 	}
 	cifs_dbg(FYI, "SMB311 cipher type:%d\n", le16_to_cpu(ctxt->Ciphers[0]));
-	if ((ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES128_CCM) &&
-	    (ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES128_GCM)) {
+	if (require_gcm_256) {
+		if (ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES256_GCM) {
+			cifs_dbg(VFS, "Server does not support requested encryption type (AES256 GCM)\n");
+			return -EOPNOTSUPP;
+		}
+	} else if (ctxt->Ciphers[0] == 0) {
+		/*
+		 * e.g. if server only supported AES256_CCM (very unlikely)
+		 * or server supported no encryption types or had all disabled.
+		 * Since GLOBAL_CAP_ENCRYPTION will be not set, in the case
+		 * in which mount requested encryption ("seal") checks later
+		 * on during tree connection will return proper rc, but if
+		 * seal not requested by client, since server is allowed to
+		 * return 0 to indicate no supported cipher, we can't fail here
+		 */
+		server->cipher_type = 0;
+		server->capabilities &= ~SMB2_GLOBAL_CAP_ENCRYPTION;
+		pr_warn_once("Server does not support requested encryption types\n");
+		return 0;
+	} else if ((ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES128_CCM) &&
+		   (ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES128_GCM) &&
+		   (ctxt->Ciphers[0] != SMB2_ENCRYPTION_AES256_GCM)) {
+		/* server returned a cipher we didn't ask for */
 		pr_warn_once("Invalid SMB3.11 cipher returned\n");
 		return -EINVAL;
 	}
@@ -889,8 +814,9 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		   SMB3ANY_VERSION_STRING) == 0) {
 		req->Dialects[0] = cpu_to_le16(SMB30_PROT_ID);
 		req->Dialects[1] = cpu_to_le16(SMB302_PROT_ID);
-		req->DialectCount = cpu_to_le16(2);
-		total_len += 4;
+		req->Dialects[2] = cpu_to_le16(SMB311_PROT_ID);
+		req->DialectCount = cpu_to_le16(3);
+		total_len += 6;
 	} else if (strcmp(server->vals->version_string,
 		   SMBDEFAULT_VERSION_STRING) == 0) {
 		req->Dialects[0] = cpu_to_le16(SMB21_PROT_ID);
@@ -915,6 +841,8 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		req->SecurityMode = 0;
 
 	req->Capabilities = cpu_to_le32(server->vals->req_capabilities);
+	if (ses->chan_max > 1)
+		req->Capabilities |= cpu_to_le32(SMB2_GLOBAL_CAP_MULTI_CHANNEL);
 
 	/* ClientGUID must be zero for SMB2.02 dialect */
 	if (server->vals->protocol_id == SMB20_PROT_ID)
@@ -923,6 +851,8 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		memcpy(req->ClientGUID, server->client_guid,
 			SMB2_CLIENT_GUID_SIZE);
 		if ((server->vals->protocol_id == SMB311_PROT_ID) ||
+		    (strcmp(server->vals->version_string,
+		     SMB3ANY_VERSION_STRING) == 0) ||
 		    (strcmp(server->vals->version_string,
 		     SMBDEFAULT_VERSION_STRING) == 0))
 			assemble_neg_contexts(req, server, &total_len);
@@ -958,6 +888,10 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 			cifs_server_dbg(VFS,
 				"SMB2.1 dialect returned but not requested\n");
 			return -EIO;
+		} else if (rsp->DialectRevision == cpu_to_le16(SMB311_PROT_ID)) {
+			/* ops set to 3.0 by default for default so update */
+			server->ops = &smb311_operations;
+			server->vals = &smb311_values;
 		}
 	} else if (strcmp(server->vals->version_string,
 		   SMBDEFAULT_VERSION_STRING) == 0) {
@@ -1023,6 +957,13 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 	server->capabilities = le32_to_cpu(rsp->Capabilities);
 	/* Internal types */
 	server->capabilities |= SMB2_NT_FIND | SMB2_LARGE_FILES;
+
+	/*
+	 * SMB3.0 supports only 1 cipher and doesn't have a encryption neg context
+	 * Set the cipher type manually.
+	 */
+	if (server->dialect == SMB30_PROT_ID && (server->capabilities & SMB2_GLOBAL_CAP_ENCRYPTION))
+		server->cipher_type = SMB2_ENCRYPTION_AES128_CCM;
 
 	security_blob = smb2_get_data_area_len(&blob_offset, &blob_length,
 					       (struct smb2_sync_hdr *)rsp);
@@ -1100,6 +1041,9 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 
 	pneg_inbuf->Capabilities =
 			cpu_to_le32(server->vals->req_capabilities);
+	if (tcon->ses->chan_max > 1)
+		pneg_inbuf->Capabilities |= cpu_to_le32(SMB2_GLOBAL_CAP_MULTI_CHANNEL);
+
 	memcpy(pneg_inbuf->Guid, server->client_guid,
 					SMB2_CLIENT_GUID_SIZE);
 
@@ -1117,10 +1061,11 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 		SMB3ANY_VERSION_STRING) == 0) {
 		pneg_inbuf->Dialects[0] = cpu_to_le16(SMB30_PROT_ID);
 		pneg_inbuf->Dialects[1] = cpu_to_le16(SMB302_PROT_ID);
-		pneg_inbuf->DialectCount = cpu_to_le16(2);
-		/* structure is big enough for 3 dialects, sending only 2 */
+		pneg_inbuf->Dialects[2] = cpu_to_le16(SMB311_PROT_ID);
+		pneg_inbuf->DialectCount = cpu_to_le16(3);
+		/* SMB 2.1 not included so subtract one dialect from len */
 		inbuflen = sizeof(*pneg_inbuf) -
-				(2 * sizeof(pneg_inbuf->Dialects[0]));
+				(sizeof(pneg_inbuf->Dialects[0]));
 	} else if (strcmp(server->vals->version_string,
 		SMBDEFAULT_VERSION_STRING) == 0) {
 		pneg_inbuf->Dialects[0] = cpu_to_le16(SMB21_PROT_ID);
@@ -1128,7 +1073,7 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 		pneg_inbuf->Dialects[2] = cpu_to_le16(SMB302_PROT_ID);
 		pneg_inbuf->Dialects[3] = cpu_to_le16(SMB311_PROT_ID);
 		pneg_inbuf->DialectCount = cpu_to_le16(4);
-		/* structure is big enough for 3 dialects */
+		/* structure is big enough for 4 dialects */
 		inbuflen = sizeof(*pneg_inbuf);
 	} else {
 		/* otherwise specific dialect was requested */
@@ -1212,7 +1157,7 @@ smb2_select_sectype(struct TCP_Server_Info *server, enum securityEnum requested)
 		if ((server->sec_kerberos || server->sec_mskerberos) &&
 			(global_secflags & CIFSSEC_MAY_KRB5))
 			return Kerberos;
-		/* Fallthrough */
+		fallthrough;
 	default:
 		return Unspecified;
 	}
@@ -1328,7 +1273,7 @@ SMB2_sess_sendreceive(struct SMB2_sess_data *sess_data)
 			    cifs_ses_server(sess_data->ses),
 			    &rqst,
 			    &sess_data->buf0_type,
-			    CIFS_LOG_ERROR | CIFS_NEG_OP, &rsp_iov);
+			    CIFS_LOG_ERROR | CIFS_SESS_OP, &rsp_iov);
 	cifs_small_buf_release(sess_data->iov[0].iov_base);
 	memcpy(&sess_data->iov[0], &rsp_iov, sizeof(struct kvec));
 
@@ -1387,6 +1332,8 @@ SMB2_auth_kerberos(struct SMB2_sess_data *sess_data)
 	spnego_key = cifs_get_spnego_key(ses);
 	if (IS_ERR(spnego_key)) {
 		rc = PTR_ERR(spnego_key);
+		if (rc == -ENOKEY)
+			cifs_dbg(VFS, "Verify user has a krb5 ticket and keyutils is installed\n");
 		spnego_key = NULL;
 		goto out;
 	}
@@ -1922,7 +1869,7 @@ SMB2_tdis(const unsigned int xid, struct cifs_tcon *tcon)
 	if ((tcon->need_reconnect) || (tcon->ses->need_reconnect))
 		return 0;
 
-	close_shroot_lease(&tcon->crfid);
+	close_cached_dir_lease(&tcon->crfid);
 
 	rc = smb2_plain_req_init(SMB2_TREE_DISCONNECT, tcon, ses->server,
 				 (void **) &req,
@@ -2057,9 +2004,11 @@ smb2_parse_contexts(struct TCP_Server_Info *server,
 	unsigned int next;
 	unsigned int remaining;
 	char *name;
-	const char smb3_create_tag_posix[] = {0x93, 0xAD, 0x25, 0x50, 0x9C,
-					0xB4, 0x11, 0xE7, 0xB4, 0x23, 0x83,
-					0xDE, 0x96, 0x8B, 0xCD, 0x7C};
+	static const char smb3_create_tag_posix[] = {
+		0x93, 0xAD, 0x25, 0x50, 0x9C,
+		0xB4, 0x11, 0xE7, 0xB4, 0x23, 0x83,
+		0xDE, 0x96, 0x8B, 0xCD, 0x7C
+	};
 
 	*oplock = 0;
 	data_offset = (char *)rsp + le32_to_cpu(rsp->CreateContextsOffset);
@@ -2346,17 +2295,15 @@ static struct crt_sd_ctxt *
 create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 {
 	struct crt_sd_ctxt *buf;
-	struct cifs_ace *pace;
-	unsigned int sdlen, acelen;
+	__u8 *ptr, *aclptr;
+	unsigned int acelen, acl_size, ace_count;
 	unsigned int owner_offset = 0;
 	unsigned int group_offset = 0;
+	struct smb3_acl acl;
 
-	*len = roundup(sizeof(struct crt_sd_ctxt) + (sizeof(struct cifs_ace) * 2), 8);
+	*len = roundup(sizeof(struct crt_sd_ctxt) + (sizeof(struct cifs_ace) * 4), 8);
 
 	if (set_owner) {
-		/* offset fields are from beginning of security descriptor not of create context */
-		owner_offset = sizeof(struct smb3_acl) + (sizeof(struct cifs_ace) * 2);
-
 		/* sizeof(struct owner_group_sids) is already multiple of 8 so no need to round */
 		*len += sizeof(struct owner_group_sids);
 	}
@@ -2365,26 +2312,22 @@ create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 	if (buf == NULL)
 		return buf;
 
+	ptr = (__u8 *)&buf[1];
 	if (set_owner) {
+		/* offset fields are from beginning of security descriptor not of create context */
+		owner_offset = ptr - (__u8 *)&buf->sd;
 		buf->sd.OffsetOwner = cpu_to_le32(owner_offset);
-		group_offset = owner_offset + sizeof(struct owner_sid);
+		group_offset = owner_offset + offsetof(struct owner_group_sids, group);
 		buf->sd.OffsetGroup = cpu_to_le32(group_offset);
+
+		setup_owner_group_sids(ptr);
+		ptr += sizeof(struct owner_group_sids);
 	} else {
 		buf->sd.OffsetOwner = 0;
 		buf->sd.OffsetGroup = 0;
 	}
 
-	sdlen = sizeof(struct smb3_sd) + sizeof(struct smb3_acl) +
-		 2 * sizeof(struct cifs_ace);
-	if (set_owner) {
-		sdlen += sizeof(struct owner_group_sids);
-		setup_owner_group_sids(owner_offset + sizeof(struct create_context) + 8 /* name */
-			+ (char *)buf);
-	}
-
-	buf->ccontext.DataOffset = cpu_to_le16(offsetof
-					(struct crt_sd_ctxt, sd));
-	buf->ccontext.DataLength = cpu_to_le32(sdlen);
+	buf->ccontext.DataOffset = cpu_to_le16(offsetof(struct crt_sd_ctxt, sd));
 	buf->ccontext.NameOffset = cpu_to_le16(offsetof(struct crt_sd_ctxt, Name));
 	buf->ccontext.NameLength = cpu_to_le16(4);
 	/* SMB2_CREATE_SD_BUFFER_TOKEN is "SecD" */
@@ -2393,6 +2336,7 @@ create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 	buf->Name[2] = 'c';
 	buf->Name[3] = 'D';
 	buf->sd.Revision = 1;  /* Must be one see MS-DTYP 2.4.6 */
+
 	/*
 	 * ACL is "self relative" ie ACL is stored in contiguous block of memory
 	 * and "DP" ie the DACL is present
@@ -2400,28 +2344,38 @@ create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 	buf->sd.Control = cpu_to_le16(ACL_CONTROL_SR | ACL_CONTROL_DP);
 
 	/* offset owner, group and Sbz1 and SACL are all zero */
-	buf->sd.OffsetDacl = cpu_to_le32(sizeof(struct smb3_sd));
-	buf->acl.AclRevision = ACL_REVISION; /* See 2.4.4.1 of MS-DTYP */
+	buf->sd.OffsetDacl = cpu_to_le32(ptr - (__u8 *)&buf->sd);
+	/* Ship the ACL for now. we will copy it into buf later. */
+	aclptr = ptr;
+	ptr += sizeof(struct cifs_acl);
 
 	/* create one ACE to hold the mode embedded in reserved special SID */
-	pace = (struct cifs_ace *)(sizeof(struct crt_sd_ctxt) + (char *)buf);
-	acelen = setup_special_mode_ACE(pace, (__u64)mode);
+	acelen = setup_special_mode_ACE((struct cifs_ace *)ptr, (__u64)mode);
+	ptr += acelen;
+	acl_size = acelen + sizeof(struct smb3_acl);
+	ace_count = 1;
 
 	if (set_owner) {
 		/* we do not need to reallocate buffer to add the two more ACEs. plenty of space */
-		pace = (struct cifs_ace *)(acelen + (sizeof(struct crt_sd_ctxt) + (char *)buf));
-		acelen += setup_special_user_owner_ACE(pace);
-		/* it does not appear necessary to add an ACE for the NFS group SID */
-		buf->acl.AceCount = cpu_to_le16(3);
-	} else
-		buf->acl.AceCount = cpu_to_le16(2);
+		acelen = setup_special_user_owner_ACE((struct cifs_ace *)ptr);
+		ptr += acelen;
+		acl_size += acelen;
+		ace_count += 1;
+	}
 
 	/* and one more ACE to allow access for authenticated users */
-	pace = (struct cifs_ace *)(acelen + (sizeof(struct crt_sd_ctxt) +
-		(char *)buf));
-	acelen += setup_authusers_ACE(pace);
+	acelen = setup_authusers_ACE((struct cifs_ace *)ptr);
+	ptr += acelen;
+	acl_size += acelen;
+	ace_count += 1;
 
-	buf->acl.AclSize = cpu_to_le16(sizeof(struct cifs_acl) + acelen);
+	acl.AclRevision = ACL_REVISION; /* See 2.4.4.1 of MS-DTYP */
+	acl.AclSize = cpu_to_le16(acl_size);
+	acl.AceCount = cpu_to_le16(ace_count);
+	memcpy(aclptr, &acl, sizeof(struct cifs_acl));
+
+	buf->ccontext.DataLength = cpu_to_le32(ptr - (__u8 *)&buf->sd);
+	*len = ptr - (__u8 *)buf;
 
 	return buf;
 }
@@ -3314,7 +3268,7 @@ close_exit:
 	free_rsp_buf(resp_buftype, rsp);
 
 	/* retry close in a worker thread if this one is interrupted */
-	if (rc == -EINTR) {
+	if (is_interrupt_error(rc)) {
 		int tmp_rc;
 
 		tmp_rc = smb2_handle_cancelled_close(tcon, persistent_fid,
@@ -3545,10 +3499,11 @@ SMB311_posix_query_info(const unsigned int xid, struct cifs_tcon *tcon,
 
 int
 SMB2_query_acl(const unsigned int xid, struct cifs_tcon *tcon,
-		u64 persistent_fid, u64 volatile_fid,
-		void **data, u32 *plen)
+	       u64 persistent_fid, u64 volatile_fid,
+	       void **data, u32 *plen, u32 extra_info)
 {
-	__u32 additional_info = OWNER_SECINFO | GROUP_SECINFO | DACL_SECINFO;
+	__u32 additional_info = OWNER_SECINFO | GROUP_SECINFO | DACL_SECINFO |
+				extra_info;
 	*plen = 0;
 
 	return query_info(xid, tcon, persistent_fid, volatile_fid,
@@ -3952,10 +3907,10 @@ smb2_new_read_req(void **buf, unsigned int *total_len,
 			 * Related requests use info from previous read request
 			 * in chain.
 			 */
-			shdr->SessionId = 0xFFFFFFFF;
+			shdr->SessionId = 0xFFFFFFFFFFFFFFFF;
 			shdr->TreeId = 0xFFFFFFFF;
-			req->PersistentFileId = 0xFFFFFFFF;
-			req->VolatileFileId = 0xFFFFFFFF;
+			req->PersistentFileId = 0xFFFFFFFFFFFFFFFF;
+			req->VolatileFileId = 0xFFFFFFFFFFFFFFFF;
 		}
 	}
 	if (remaining_bytes > io_parms->length)
@@ -4022,7 +3977,7 @@ smb2_readv_callback(struct mid_q_entry *mid)
 	case MID_RESPONSE_MALFORMED:
 		credits.value = le16_to_cpu(shdr->CreditRequest);
 		credits.instance = server->reconnect_instance;
-		/* fall through */
+		fallthrough;
 	default:
 		rdata->result = -EIO;
 	}
@@ -4098,8 +4053,7 @@ smb2_async_readv(struct cifs_readdata *rdata)
 	if (rdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(rdata->bytes,
 						SMB2_MAX_BUFFER_SIZE));
-		shdr->CreditRequest =
-			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
+		shdr->CreditRequest = cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 8);
 
 		rc = adjust_credits(server, &rdata->credits, rdata->bytes);
 		if (rc)
@@ -4255,7 +4209,7 @@ smb2_writev_callback(struct mid_q_entry *mid)
 	case MID_RESPONSE_MALFORMED:
 		credits.value = le16_to_cpu(rsp->sync_hdr.CreditRequest);
 		credits.instance = server->reconnect_instance;
-		/* fall through */
+		fallthrough;
 	default:
 		wdata->result = -EIO;
 		break;
@@ -4405,8 +4359,7 @@ smb2_async_writev(struct cifs_writedata *wdata,
 	if (wdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(wdata->bytes,
 						    SMB2_MAX_BUFFER_SIZE));
-		shdr->CreditRequest =
-			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
+		shdr->CreditRequest = cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 8);
 
 		rc = adjust_credits(server, &wdata->credits, wdata->bytes);
 		if (rc)

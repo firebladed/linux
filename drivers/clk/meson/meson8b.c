@@ -52,15 +52,6 @@ static const struct pll_params_table sys_pll_params_table[] = {
 	{ /* sentinel */ },
 };
 
-static struct clk_fixed_rate meson8b_xtal = {
-	.fixed_rate = 24000000,
-	.hw.init = &(struct clk_init_data){
-		.name = "xtal",
-		.num_parents = 0,
-		.ops = &clk_fixed_rate_ops,
-	},
-};
-
 static struct clk_regmap meson8b_fixed_pll_dco = {
 	.data = &(struct meson_clk_pll_data){
 		.en = {
@@ -293,13 +284,6 @@ static struct clk_regmap meson8b_fclk_div2 = {
 			&meson8b_fclk_div2_div.hw
 		},
 		.num_parents = 1,
-		/*
-		 * FIXME: Ethernet with a RGMII PHYs is not working if
-		 * fclk_div2 is disabled. it is currently unclear why this
-		 * is. keep it enabled until the Ethernet driver knows how
-		 * to manage this clock.
-		 */
-		.flags = CLK_IS_CRITICAL,
 	},
 };
 
@@ -1211,6 +1195,22 @@ static struct clk_regmap meson8b_vclk_in_en = {
 	},
 };
 
+static struct clk_regmap meson8b_vclk_en = {
+	.data = &(struct clk_regmap_gate_data){
+		.offset = HHI_VID_CLK_CNTL,
+		.bit_idx = 19,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vclk_en",
+		.ops = &clk_regmap_gate_ro_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&meson8b_vclk_in_en.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 static struct clk_regmap meson8b_vclk_div1_gate = {
 	.data = &(struct clk_regmap_gate_data){
 		.offset = HHI_VID_CLK_CNTL,
@@ -1220,7 +1220,7 @@ static struct clk_regmap meson8b_vclk_div1_gate = {
 		.name = "vclk_div1_en",
 		.ops = &clk_regmap_gate_ro_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk_in_en.hw
+			&meson8b_vclk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1234,7 +1234,7 @@ static struct clk_fixed_factor meson8b_vclk_div2_div = {
 		.name = "vclk_div2",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk_in_en.hw
+			&meson8b_vclk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1264,7 +1264,7 @@ static struct clk_fixed_factor meson8b_vclk_div4_div = {
 		.name = "vclk_div4",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk_in_en.hw
+			&meson8b_vclk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1294,7 +1294,7 @@ static struct clk_fixed_factor meson8b_vclk_div6_div = {
 		.name = "vclk_div6",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk_in_en.hw
+			&meson8b_vclk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1324,7 +1324,7 @@ static struct clk_fixed_factor meson8b_vclk_div12_div = {
 		.name = "vclk_div12",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk_in_en.hw
+			&meson8b_vclk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1378,6 +1378,22 @@ static struct clk_regmap meson8b_vclk2_clk_in_en = {
 	},
 };
 
+static struct clk_regmap meson8b_vclk2_clk_en = {
+	.data = &(struct clk_regmap_gate_data){
+		.offset = HHI_VIID_CLK_DIV,
+		.bit_idx = 19,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vclk2_en",
+		.ops = &clk_regmap_gate_ro_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&meson8b_vclk2_clk_in_en.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 static struct clk_regmap meson8b_vclk2_div1_gate = {
 	.data = &(struct clk_regmap_gate_data){
 		.offset = HHI_VIID_CLK_DIV,
@@ -1387,7 +1403,7 @@ static struct clk_regmap meson8b_vclk2_div1_gate = {
 		.name = "vclk2_div1_en",
 		.ops = &clk_regmap_gate_ro_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk2_clk_in_en.hw
+			&meson8b_vclk2_clk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1401,7 +1417,7 @@ static struct clk_fixed_factor meson8b_vclk2_div2_div = {
 		.name = "vclk2_div2",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk2_clk_in_en.hw
+			&meson8b_vclk2_clk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1431,7 +1447,7 @@ static struct clk_fixed_factor meson8b_vclk2_div4_div = {
 		.name = "vclk2_div4",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk2_clk_in_en.hw
+			&meson8b_vclk2_clk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1461,7 +1477,7 @@ static struct clk_fixed_factor meson8b_vclk2_div6_div = {
 		.name = "vclk2_div6",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk2_clk_in_en.hw
+			&meson8b_vclk2_clk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -1491,7 +1507,7 @@ static struct clk_fixed_factor meson8b_vclk2_div12_div = {
 		.name = "vclk2_div12",
 		.ops = &clk_fixed_factor_ops,
 		.parent_hws = (const struct clk_hw *[]) {
-			&meson8b_vclk2_clk_in_en.hw
+			&meson8b_vclk2_clk_en.hw
 		},
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -2690,7 +2706,6 @@ static MESON_GATE(meson8b_ao_iface, HHI_GCLK_AO, 3);
 
 static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 	.hws = {
-		[CLKID_XTAL] = &meson8b_xtal.hw,
 		[CLKID_PLL_FIXED] = &meson8b_fixed_pll.hw,
 		[CLKID_PLL_VID] = &meson8b_vid_pll.hw,
 		[CLKID_PLL_SYS] = &meson8b_sys_pll.hw,
@@ -2827,6 +2842,7 @@ static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 		[CLKID_VID_PLL_FINAL_DIV]   = &meson8b_vid_pll_final_div.hw,
 		[CLKID_VCLK_IN_SEL]	    = &meson8b_vclk_in_sel.hw,
 		[CLKID_VCLK_IN_EN]	    = &meson8b_vclk_in_en.hw,
+		[CLKID_VCLK_EN]		    = &meson8b_vclk_en.hw,
 		[CLKID_VCLK_DIV1]	    = &meson8b_vclk_div1_gate.hw,
 		[CLKID_VCLK_DIV2_DIV]	    = &meson8b_vclk_div2_div.hw,
 		[CLKID_VCLK_DIV2]	    = &meson8b_vclk_div2_div_gate.hw,
@@ -2838,6 +2854,7 @@ static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 		[CLKID_VCLK_DIV12]	    = &meson8b_vclk_div12_div_gate.hw,
 		[CLKID_VCLK2_IN_SEL]	    = &meson8b_vclk2_in_sel.hw,
 		[CLKID_VCLK2_IN_EN]	    = &meson8b_vclk2_clk_in_en.hw,
+		[CLKID_VCLK2_EN]	    = &meson8b_vclk2_clk_en.hw,
 		[CLKID_VCLK2_DIV1]	    = &meson8b_vclk2_div1_gate.hw,
 		[CLKID_VCLK2_DIV2_DIV]	    = &meson8b_vclk2_div2_div.hw,
 		[CLKID_VCLK2_DIV2]	    = &meson8b_vclk2_div2_div_gate.hw,
@@ -2895,7 +2912,6 @@ static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 
 static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 	.hws = {
-		[CLKID_XTAL] = &meson8b_xtal.hw,
 		[CLKID_PLL_FIXED] = &meson8b_fixed_pll.hw,
 		[CLKID_PLL_VID] = &meson8b_vid_pll.hw,
 		[CLKID_PLL_SYS] = &meson8b_sys_pll.hw,
@@ -3032,6 +3048,7 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_VID_PLL_FINAL_DIV]   = &meson8b_vid_pll_final_div.hw,
 		[CLKID_VCLK_IN_SEL]	    = &meson8b_vclk_in_sel.hw,
 		[CLKID_VCLK_IN_EN]	    = &meson8b_vclk_in_en.hw,
+		[CLKID_VCLK_EN]		    = &meson8b_vclk_en.hw,
 		[CLKID_VCLK_DIV1]	    = &meson8b_vclk_div1_gate.hw,
 		[CLKID_VCLK_DIV2_DIV]	    = &meson8b_vclk_div2_div.hw,
 		[CLKID_VCLK_DIV2]	    = &meson8b_vclk_div2_div_gate.hw,
@@ -3043,6 +3060,7 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_VCLK_DIV12]	    = &meson8b_vclk_div12_div_gate.hw,
 		[CLKID_VCLK2_IN_SEL]	    = &meson8b_vclk2_in_sel.hw,
 		[CLKID_VCLK2_IN_EN]	    = &meson8b_vclk2_clk_in_en.hw,
+		[CLKID_VCLK2_EN]	    = &meson8b_vclk2_clk_en.hw,
 		[CLKID_VCLK2_DIV1]	    = &meson8b_vclk2_div1_gate.hw,
 		[CLKID_VCLK2_DIV2_DIV]	    = &meson8b_vclk2_div2_div.hw,
 		[CLKID_VCLK2_DIV2]	    = &meson8b_vclk2_div2_div_gate.hw,
@@ -3111,7 +3129,6 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 
 static struct clk_hw_onecell_data meson8m2_hw_onecell_data = {
 	.hws = {
-		[CLKID_XTAL] = &meson8b_xtal.hw,
 		[CLKID_PLL_FIXED] = &meson8b_fixed_pll.hw,
 		[CLKID_PLL_VID] = &meson8b_vid_pll.hw,
 		[CLKID_PLL_SYS] = &meson8b_sys_pll.hw,
@@ -3248,6 +3265,7 @@ static struct clk_hw_onecell_data meson8m2_hw_onecell_data = {
 		[CLKID_VID_PLL_FINAL_DIV]   = &meson8b_vid_pll_final_div.hw,
 		[CLKID_VCLK_IN_SEL]	    = &meson8b_vclk_in_sel.hw,
 		[CLKID_VCLK_IN_EN]	    = &meson8b_vclk_in_en.hw,
+		[CLKID_VCLK_EN]		    = &meson8b_vclk_en.hw,
 		[CLKID_VCLK_DIV1]	    = &meson8b_vclk_div1_gate.hw,
 		[CLKID_VCLK_DIV2_DIV]	    = &meson8b_vclk_div2_div.hw,
 		[CLKID_VCLK_DIV2]	    = &meson8b_vclk_div2_div_gate.hw,
@@ -3259,6 +3277,7 @@ static struct clk_hw_onecell_data meson8m2_hw_onecell_data = {
 		[CLKID_VCLK_DIV12]	    = &meson8b_vclk_div12_div_gate.hw,
 		[CLKID_VCLK2_IN_SEL]	    = &meson8b_vclk2_in_sel.hw,
 		[CLKID_VCLK2_IN_EN]	    = &meson8b_vclk2_clk_in_en.hw,
+		[CLKID_VCLK2_EN]	    = &meson8b_vclk2_clk_en.hw,
 		[CLKID_VCLK2_DIV1]	    = &meson8b_vclk2_div1_gate.hw,
 		[CLKID_VCLK2_DIV2_DIV]	    = &meson8b_vclk2_div2_div.hw,
 		[CLKID_VCLK2_DIV2]	    = &meson8b_vclk2_div2_div_gate.hw,
@@ -3450,6 +3469,7 @@ static struct clk_regmap *const meson8b_clk_regmaps[] = {
 	&meson8b_vid_pll_final_div,
 	&meson8b_vclk_in_sel,
 	&meson8b_vclk_in_en,
+	&meson8b_vclk_en,
 	&meson8b_vclk_div1_gate,
 	&meson8b_vclk_div2_div_gate,
 	&meson8b_vclk_div4_div_gate,
@@ -3457,6 +3477,7 @@ static struct clk_regmap *const meson8b_clk_regmaps[] = {
 	&meson8b_vclk_div12_div_gate,
 	&meson8b_vclk2_in_sel,
 	&meson8b_vclk2_clk_in_en,
+	&meson8b_vclk2_clk_en,
 	&meson8b_vclk2_div1_gate,
 	&meson8b_vclk2_div2_div_gate,
 	&meson8b_vclk2_div4_div_gate,
@@ -3692,36 +3713,19 @@ static struct meson8b_nb_data meson8b_cpu_nb_data = {
 	.nb.notifier_call = meson8b_cpu_clk_notifier_cb,
 };
 
-static const struct regmap_config clkc_regmap_config = {
-	.reg_bits       = 32,
-	.val_bits       = 32,
-	.reg_stride     = 4,
-};
-
 static void __init meson8b_clkc_init_common(struct device_node *np,
 			struct clk_hw_onecell_data *clk_hw_onecell_data)
 {
 	struct meson8b_clk_reset *rstc;
 	const char *notifier_clk_name;
 	struct clk *notifier_clk;
-	void __iomem *clk_base;
 	struct regmap *map;
 	int i, ret;
 
 	map = syscon_node_to_regmap(of_get_parent(np));
 	if (IS_ERR(map)) {
-		pr_info("failed to get HHI regmap - Trying obsolete regs\n");
-
-		/* Generic clocks, PLLs and some of the reset-bits */
-		clk_base = of_iomap(np, 1);
-		if (!clk_base) {
-			pr_err("%s: Unable to map clk base\n", __func__);
-			return;
-		}
-
-		map = regmap_init_mmio(NULL, clk_base, &clkc_regmap_config);
-		if (IS_ERR(map))
-			return;
+		pr_err("failed to get HHI regmap - Trying obsolete regs\n");
+		return;
 	}
 
 	rstc = kzalloc(sizeof(*rstc), GFP_KERNEL);
@@ -3745,16 +3749,10 @@ static void __init meson8b_clkc_init_common(struct device_node *np,
 		meson8b_clk_regmaps[i]->map = map;
 
 	/*
-	 * always skip CLKID_UNUSED and also skip XTAL if the .dtb provides the
-	 * XTAL clock as input.
+	 * register all clks and start with the first used ID (which is
+	 * CLKID_PLL_FIXED)
 	 */
-	if (!IS_ERR(of_clk_get_by_name(np, "xtal")))
-		i = CLKID_PLL_FIXED;
-	else
-		i = CLKID_XTAL;
-
-	/* register all clks */
-	for (; i < CLK_NR_CLKS; i++) {
+	for (i = CLKID_PLL_FIXED; i < CLK_NR_CLKS; i++) {
 		/* array might be sparse */
 		if (!clk_hw_onecell_data->hws[i])
 			continue;

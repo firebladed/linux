@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include <sys/poll.h>
@@ -36,6 +37,7 @@ extern int optind;
 
 static int  poll_timeout = 10 * 1000;
 static bool listen_mode;
+static bool quit;
 
 enum cfg_mode {
 	CFG_MODE_POLL,
@@ -43,7 +45,14 @@ enum cfg_mode {
 	CFG_MODE_SENDFILE,
 };
 
+enum cfg_peek {
+	CFG_NONE_PEEK,
+	CFG_WITH_PEEK,
+	CFG_AFTER_PEEK,
+};
+
 static enum cfg_mode cfg_mode = CFG_MODE_POLL;
+static enum cfg_peek cfg_peek = CFG_NONE_PEEK;
 static const char *cfg_host;
 static const char *cfg_port	= "12000";
 static int cfg_sock_proto	= IPPROTO_MPTCP;
@@ -52,20 +61,33 @@ static int pf = AF_INET;
 static int cfg_sndbuf;
 static int cfg_rcvbuf;
 static bool cfg_join;
+static bool cfg_remove;
+static unsigned int cfg_do_w;
+static int cfg_wait;
+static uint32_t cfg_mark;
 
 static void die_usage(void)
 {
 	fprintf(stderr, "Usage: mptcp_connect [-6] [-u] [-s MPTCP|TCP] [-p port] [-m mode]"
-		"[-l] connect_address\n");
+		"[-l] [-w sec] connect_address\n");
 	fprintf(stderr, "\t-6 use ipv6\n");
 	fprintf(stderr, "\t-t num -- set poll timeout to num\n");
 	fprintf(stderr, "\t-S num -- set SO_SNDBUF to num\n");
 	fprintf(stderr, "\t-R num -- set SO_RCVBUF to num\n");
 	fprintf(stderr, "\t-p num -- use port num\n");
-	fprintf(stderr, "\t-m [MPTCP|TCP] -- use tcp or mptcp sockets\n");
-	fprintf(stderr, "\t-s [mmap|poll] -- use poll (default) or mmap\n");
+	fprintf(stderr, "\t-s [MPTCP|TCP] -- use mptcp(default) or tcp sockets\n");
+	fprintf(stderr, "\t-m [poll|mmap|sendfile] -- use poll(default)/mmap+write/sendfile\n");
+	fprintf(stderr, "\t-M mark -- set socket packet mark\n");
 	fprintf(stderr, "\t-u -- check mptcp ulp\n");
+	fprintf(stderr, "\t-w num -- wait num sec before closing the socket\n");
+	fprintf(stderr,
+		"\t-P [saveWithPeek|saveAfterPeek] -- save data with/after MSG_PEEK form tcp socket\n");
 	exit(1);
+}
+
+static void handle_signal(int nr)
+{
+	quit = true;
 }
 
 static const char *getxinfo_strerr(int err)
@@ -125,6 +147,17 @@ static void set_sndbuf(int fd, unsigned int size)
 	err = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
 	if (err) {
 		perror("set SO_SNDBUF");
+		exit(1);
+	}
+}
+
+static void set_mark(int fd, uint32_t mark)
+{
+	int err;
+
+	err = setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark));
+	if (err) {
+		perror("set SO_MARK");
 		exit(1);
 	}
 }
@@ -237,6 +270,9 @@ static int sock_connect_mptcp(const char * const remoteaddr,
 			continue;
 		}
 
+		if (cfg_mark)
+			set_mark(sock, cfg_mark);
+
 		if (connect(sock, a->ai_addr, a->ai_addrlen) == 0)
 			break; /* success */
 
@@ -262,6 +298,9 @@ static size_t do_rnd_write(const int fd, char *buf, const size_t len)
 	if (cfg_join && first && do_w > 100)
 		do_w = 100;
 
+	if (cfg_remove && do_w > cfg_do_w)
+		do_w = cfg_do_w;
+
 	bw = write(fd, buf, do_w);
 	if (bw < 0)
 		perror("write");
@@ -271,6 +310,9 @@ static size_t do_rnd_write(const int fd, char *buf, const size_t len)
 		usleep(200000);
 		first = false;
 	}
+
+	if (cfg_remove)
+		usleep(200000);
 
 	return bw;
 }
@@ -298,6 +340,8 @@ static size_t do_write(const int fd, char *buf, const size_t len)
 
 static ssize_t do_rnd_read(const int fd, char *buf, const size_t len)
 {
+	int ret = 0;
+	char tmp[16384];
 	size_t cap = rand();
 
 	cap &= 0xffff;
@@ -307,7 +351,17 @@ static ssize_t do_rnd_read(const int fd, char *buf, const size_t len)
 	else if (cap > len)
 		cap = len;
 
-	return read(fd, buf, cap);
+	if (cfg_peek == CFG_WITH_PEEK) {
+		ret = recv(fd, buf, cap, MSG_PEEK);
+		ret = (ret < 0) ? ret : read(fd, tmp, ret);
+	} else if (cfg_peek == CFG_AFTER_PEEK) {
+		ret = recv(fd, buf, cap, MSG_PEEK);
+		ret = (ret < 0) ? ret : read(fd, buf, cap);
+	} else {
+		ret = read(fd, buf, cap);
+	}
+
+	return ret;
 }
 
 static void set_nonblock(int fd)
@@ -397,10 +451,11 @@ static int copyfd_io_poll(int infd, int peerfd, int outfd)
 
 				/* ... but we still receive.
 				 * Close our write side, ev. give some time
-				 * for address notification
+				 * for address notification and/or checking
+				 * the current status
 				 */
-				if (cfg_join)
-					usleep(400000);
+				if (cfg_wait)
+					usleep(cfg_wait);
 				shutdown(peerfd, SHUT_WR);
 			} else {
 				if (errno == EINTR)
@@ -418,8 +473,8 @@ static int copyfd_io_poll(int infd, int peerfd, int outfd)
 	}
 
 	/* leave some time for late join/announce */
-	if (cfg_join)
-		usleep(400000);
+	if (cfg_join || cfg_remove)
+		usleep(cfg_wait);
 
 	close(peerfd);
 	return 0;
@@ -676,7 +731,7 @@ static void maybe_close(int fd)
 {
 	unsigned int r = rand();
 
-	if (!cfg_join && (r & 1))
+	if (!(cfg_join || cfg_remove) && (r & 1))
 		close(fd);
 }
 
@@ -785,6 +840,26 @@ int parse_mode(const char *mode)
 	return 0;
 }
 
+int parse_peek(const char *mode)
+{
+	if (!strcasecmp(mode, "saveWithPeek"))
+		return CFG_WITH_PEEK;
+	if (!strcasecmp(mode, "saveAfterPeek"))
+		return CFG_AFTER_PEEK;
+
+	fprintf(stderr, "Unknown: %s\n", mode);
+	fprintf(stderr, "Supported MSG_PEEK mode are:\n");
+	fprintf(stderr,
+		"\t\t\"saveWithPeek\" - recv data with flags 'MSG_PEEK' and save the peek data into file\n");
+	fprintf(stderr,
+		"\t\t\"saveAfterPeek\" - read and save data into file after recv with flags 'MSG_PEEK'\n");
+
+	die_usage();
+
+	/* silence compiler warning */
+	return 0;
+}
+
 static int parse_int(const char *size)
 {
 	unsigned long s;
@@ -812,11 +887,20 @@ static void parse_opts(int argc, char **argv)
 {
 	int c;
 
-	while ((c = getopt(argc, argv, "6jlp:s:hut:m:S:R:")) != -1) {
+	while ((c = getopt(argc, argv, "6jr:lp:s:hut:m:S:R:w:M:P:")) != -1) {
 		switch (c) {
 		case 'j':
 			cfg_join = true;
 			cfg_mode = CFG_MODE_POLL;
+			cfg_wait = 400000;
+			break;
+		case 'r':
+			cfg_remove = true;
+			cfg_mode = CFG_MODE_POLL;
+			cfg_wait = 400000;
+			cfg_do_w = atoi(optarg);
+			if (cfg_do_w <= 0)
+				cfg_do_w = 50;
 			break;
 		case 'l':
 			listen_mode = true;
@@ -850,6 +934,15 @@ static void parse_opts(int argc, char **argv)
 		case 'R':
 			cfg_rcvbuf = parse_int(optarg);
 			break;
+		case 'w':
+			cfg_wait = atoi(optarg)*1000000;
+			break;
+		case 'M':
+			cfg_mark = strtol(optarg, NULL, 0);
+			break;
+		case 'P':
+			cfg_peek = parse_peek(optarg);
+			break;
 		}
 	}
 
@@ -865,6 +958,7 @@ int main(int argc, char *argv[])
 {
 	init_rng();
 
+	signal(SIGUSR1, handle_signal);
 	parse_opts(argc, argv);
 
 	if (tcpulp_audit)
@@ -880,6 +974,8 @@ int main(int argc, char *argv[])
 			set_rcvbuf(fd, cfg_rcvbuf);
 		if (cfg_sndbuf)
 			set_sndbuf(fd, cfg_sndbuf);
+		if (cfg_mark)
+			set_mark(fd, cfg_mark);
 
 		return main_loop_s(fd);
 	}

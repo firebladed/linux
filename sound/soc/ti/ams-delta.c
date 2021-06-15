@@ -395,7 +395,6 @@ static void cx81801_wakeup(struct tty_struct *tty)
 }
 
 static struct tty_ldisc_ops cx81801_ops = {
-	.magic = TTY_LDISC_MAGIC,
 	.name = "cx81801",
 	.owner = THIS_MODULE,
 	.open = cx81801_open,
@@ -408,7 +407,7 @@ static struct tty_ldisc_ops cx81801_ops = {
 
 /*
  * Even if not very useful, the sound card can still work without any of the
- * above functonality activated.  You can still control its audio input/output
+ * above functionality activated.  You can still control its audio input/output
  * constellation and speakerphone gain from userspace by issuing AT commands
  * over the modem port.
  */
@@ -420,7 +419,7 @@ static struct snd_soc_ops ams_delta_ops;
  * Shares hardware with codec config pulse generation */
 static bool ams_delta_muted = 1;
 
-static int ams_delta_digital_mute(struct snd_soc_dai *dai, int mute)
+static int ams_delta_mute(struct snd_soc_dai *dai, int mute, int direction)
 {
 	int apply;
 
@@ -439,18 +438,19 @@ static int ams_delta_digital_mute(struct snd_soc_dai *dai, int mute)
 
 /* Our codec DAI probably doesn't have its own .ops structure */
 static const struct snd_soc_dai_ops ams_delta_dai_ops = {
-	.digital_mute = ams_delta_digital_mute,
+	.mute_stream = ams_delta_mute,
+	.no_capture_mute = 1,
 };
 
 /* Will be used if the codec ever has its own digital_mute function */
 static int ams_delta_startup(struct snd_pcm_substream *substream)
 {
-	return ams_delta_digital_mute(NULL, 0);
+	return ams_delta_mute(NULL, 0, substream->stream);
 }
 
 static void ams_delta_shutdown(struct snd_pcm_substream *substream)
 {
-	ams_delta_digital_mute(NULL, 1);
+	ams_delta_mute(NULL, 1, substream->stream);
 }
 
 

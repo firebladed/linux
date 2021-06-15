@@ -381,7 +381,7 @@ static int ipv6_srh_rcv(struct sk_buff *skb)
 
 looped_back:
 	if (hdr->segments_left == 0) {
-		if (hdr->nexthdr == NEXTHDR_IPV6) {
+		if (hdr->nexthdr == NEXTHDR_IPV6 || hdr->nexthdr == NEXTHDR_IPV4) {
 			int offset = (hdr->hdrlen + 1) << 3;
 
 			skb_postpull_rcsum(skb, skb_network_header(skb),
@@ -397,7 +397,8 @@ looped_back:
 			skb_reset_network_header(skb);
 			skb_reset_transport_header(skb);
 			skb->encapsulation = 0;
-
+			if (hdr->nexthdr == NEXTHDR_IPV4)
+				skb->protocol = htons(ETH_P_IP);
 			__skb_tunnel_rx(skb, skb->dev, net);
 
 			netif_rx(skb);
@@ -580,7 +581,7 @@ looped_back:
 	hdr->segments_left--;
 	i = n - hdr->segments_left;
 
-	buf = kzalloc(ipv6_rpl_srh_alloc_size(n + 1) * 2, GFP_ATOMIC);
+	buf = kcalloc(struct_size(hdr, segments.addr, n + 2), 2, GFP_ATOMIC);
 	if (unlikely(!buf)) {
 		kfree_skb(skb);
 		return -1;
@@ -906,11 +907,6 @@ void ipv6_exthdrs_exit(void)
 /*
  * Note: we cannot rely on skb_dst(skb) before we assign it in ip6_route_input().
  */
-static inline struct inet6_dev *ipv6_skb_idev(struct sk_buff *skb)
-{
-	return skb_dst(skb) ? ip6_dst_idev(skb_dst(skb)) : __in6_dev_get(skb->dev);
-}
-
 static inline struct net *ipv6_skb_net(struct sk_buff *skb)
 {
 	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
@@ -1232,7 +1228,6 @@ static void ipv6_renew_option(int renewtype,
  * @opt: original options
  * @newtype: option type to replace in @opt
  * @newopt: new option of type @newtype to replace (user-mem)
- * @newoptlen: length of @newopt
  *
  * Returns a new set of options which is a copy of @opt with the
  * option type @newtype replaced with @newopt.

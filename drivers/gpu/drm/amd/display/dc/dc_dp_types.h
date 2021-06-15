@@ -123,6 +123,7 @@ struct dc_link_training_overrides {
 
 	uint16_t *cr_pattern_time;
 	uint16_t *eq_pattern_time;
+	enum dc_dp_training_pattern *pattern_for_cr;
 	enum dc_dp_training_pattern *pattern_for_eq;
 
 	enum dc_link_spread *downspread;
@@ -450,6 +451,9 @@ struct dpcd_amd_signature {
 	uint8_t AMD_IEEE_TxSignature_byte1;
 	uint8_t AMD_IEEE_TxSignature_byte2;
 	uint8_t AMD_IEEE_TxSignature_byte3;
+};
+
+struct dpcd_amd_device_id {
 	uint8_t device_id_byte1;
 	uint8_t device_id_byte2;
 	uint8_t zero[4];
@@ -726,7 +730,7 @@ union dpcd_dsc_basic_capabilities {
 	uint8_t raw[16];
 };
 
-union dpcd_dsc_ext_capabilities {
+union dpcd_dsc_branch_decoder_capabilities {
 	struct {
 		uint8_t BRANCH_OVERALL_THROUGHPUT_0;
 		uint8_t BRANCH_OVERALL_THROUGHPUT_1;
@@ -737,7 +741,7 @@ union dpcd_dsc_ext_capabilities {
 
 struct dpcd_dsc_capabilities {
 	union dpcd_dsc_basic_capabilities dsc_basic_caps;
-	union dpcd_dsc_ext_capabilities dsc_ext_caps;
+	union dpcd_dsc_branch_decoder_capabilities dsc_branch_decoder_caps;
 };
 
 /* These parameters are from PSR capabilities reported by Sink DPCD */

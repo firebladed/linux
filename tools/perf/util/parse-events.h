@@ -33,8 +33,15 @@ const char *event_type(int type);
 
 int parse_events_option(const struct option *opt, const char *str, int unset);
 int parse_events_option_new_evlist(const struct option *opt, const char *str, int unset);
-int parse_events(struct evlist *evlist, const char *str,
-		 struct parse_events_error *error);
+int __parse_events(struct evlist *evlist, const char *str, struct parse_events_error *error,
+		   struct perf_pmu *fake_pmu);
+
+static inline int parse_events(struct evlist *evlist, const char *str,
+			       struct parse_events_error *err)
+{
+	return __parse_events(evlist, str, err, NULL);
+}
+
 int parse_events_terms(struct list_head *terms, const char *str);
 int parse_filter(const struct option *opt, const char *str, int unset);
 int exclude_perf(const struct option *opt, const char *arg, int unset);
@@ -127,9 +134,11 @@ struct parse_events_state {
 	int			   idx;
 	int			   nr_groups;
 	struct parse_events_error *error;
-	struct evlist	  *evlist;
+	struct evlist		  *evlist;
 	struct list_head	  *terms;
 	int			   stoken;
+	struct perf_pmu		  *fake_pmu;
+	char			  *hybrid_pmu_name;
 };
 
 void parse_events__handle_error(struct parse_events_error *err, int idx,
@@ -180,9 +189,10 @@ int parse_events_add_tool(struct parse_events_state *parse_state,
 int parse_events_add_cache(struct list_head *list, int *idx,
 			   char *type, char *op_result1, char *op_result2,
 			   struct parse_events_error *error,
-			   struct list_head *head_config);
+			   struct list_head *head_config,
+			   struct parse_events_state *parse_state);
 int parse_events_add_breakpoint(struct list_head *list, int *idx,
-				void *ptr, char *type, u64 len);
+				u64 addr, char *type, u64 len);
 int parse_events_add_pmu(struct parse_events_state *parse_state,
 			 struct list_head *list, char *name,
 			 struct list_head *head_config,
@@ -252,5 +262,12 @@ static inline bool is_sdt_event(char *str __maybe_unused)
 	return false;
 }
 #endif /* HAVE_LIBELF_SUPPORT */
+
+int perf_pmu__test_parse_init(void);
+
+struct evsel *parse_events__add_event_hybrid(struct list_head *list, int *idx,
+					     struct perf_event_attr *attr,
+					     char *name, struct perf_pmu *pmu,
+					     struct list_head *config_terms);
 
 #endif /* __PERF_PARSE_EVENTS_H */

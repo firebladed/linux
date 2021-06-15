@@ -302,9 +302,8 @@ static int sja1105_status_get(struct sja1105_private *priv,
  * for upload requires the recalculation of table CRCs and updating the
  * structures with these.
  */
-static int
-static_config_buf_prepare_for_upload(struct sja1105_private *priv,
-				     void *config_buf, int buf_len)
+int static_config_buf_prepare_for_upload(struct sja1105_private *priv,
+					 void *config_buf, int buf_len)
 {
 	struct sja1105_static_config *config = &priv->static_config;
 	struct sja1105_table_header final_header;
@@ -507,12 +506,13 @@ static struct sja1105_regs sja1105pqrs_regs = {
 	.ptpsyncts = 0x1F,
 };
 
-struct sja1105_info sja1105e_info = {
+const struct sja1105_info sja1105e_info = {
 	.device_id		= SJA1105E_DEVICE_ID,
 	.part_no		= SJA1105ET_PART_NO,
 	.static_ops		= sja1105e_table_ops,
 	.dyn_ops		= sja1105et_dyn_ops,
 	.qinq_tpid		= ETH_P_8021Q,
+	.can_limit_mcast_flood	= false,
 	.ptp_ts_bits		= 24,
 	.ptpegr_ts_bytes	= 4,
 	.num_cbs_shapers	= SJA1105ET_MAX_CBS_COUNT,
@@ -523,12 +523,14 @@ struct sja1105_info sja1105e_info = {
 	.regs			= &sja1105et_regs,
 	.name			= "SJA1105E",
 };
-struct sja1105_info sja1105t_info = {
+
+const struct sja1105_info sja1105t_info = {
 	.device_id		= SJA1105T_DEVICE_ID,
 	.part_no		= SJA1105ET_PART_NO,
 	.static_ops		= sja1105t_table_ops,
 	.dyn_ops		= sja1105et_dyn_ops,
 	.qinq_tpid		= ETH_P_8021Q,
+	.can_limit_mcast_flood	= false,
 	.ptp_ts_bits		= 24,
 	.ptpegr_ts_bytes	= 4,
 	.num_cbs_shapers	= SJA1105ET_MAX_CBS_COUNT,
@@ -539,12 +541,14 @@ struct sja1105_info sja1105t_info = {
 	.regs			= &sja1105et_regs,
 	.name			= "SJA1105T",
 };
-struct sja1105_info sja1105p_info = {
+
+const struct sja1105_info sja1105p_info = {
 	.device_id		= SJA1105PR_DEVICE_ID,
 	.part_no		= SJA1105P_PART_NO,
 	.static_ops		= sja1105p_table_ops,
 	.dyn_ops		= sja1105pqrs_dyn_ops,
 	.qinq_tpid		= ETH_P_8021AD,
+	.can_limit_mcast_flood	= true,
 	.ptp_ts_bits		= 32,
 	.ptpegr_ts_bytes	= 8,
 	.num_cbs_shapers	= SJA1105PQRS_MAX_CBS_COUNT,
@@ -556,12 +560,14 @@ struct sja1105_info sja1105p_info = {
 	.regs			= &sja1105pqrs_regs,
 	.name			= "SJA1105P",
 };
-struct sja1105_info sja1105q_info = {
+
+const struct sja1105_info sja1105q_info = {
 	.device_id		= SJA1105QS_DEVICE_ID,
 	.part_no		= SJA1105Q_PART_NO,
 	.static_ops		= sja1105q_table_ops,
 	.dyn_ops		= sja1105pqrs_dyn_ops,
 	.qinq_tpid		= ETH_P_8021AD,
+	.can_limit_mcast_flood	= true,
 	.ptp_ts_bits		= 32,
 	.ptpegr_ts_bytes	= 8,
 	.num_cbs_shapers	= SJA1105PQRS_MAX_CBS_COUNT,
@@ -573,12 +579,14 @@ struct sja1105_info sja1105q_info = {
 	.regs			= &sja1105pqrs_regs,
 	.name			= "SJA1105Q",
 };
-struct sja1105_info sja1105r_info = {
+
+const struct sja1105_info sja1105r_info = {
 	.device_id		= SJA1105PR_DEVICE_ID,
 	.part_no		= SJA1105R_PART_NO,
 	.static_ops		= sja1105r_table_ops,
 	.dyn_ops		= sja1105pqrs_dyn_ops,
 	.qinq_tpid		= ETH_P_8021AD,
+	.can_limit_mcast_flood	= true,
 	.ptp_ts_bits		= 32,
 	.ptpegr_ts_bytes	= 8,
 	.num_cbs_shapers	= SJA1105PQRS_MAX_CBS_COUNT,
@@ -590,13 +598,15 @@ struct sja1105_info sja1105r_info = {
 	.regs			= &sja1105pqrs_regs,
 	.name			= "SJA1105R",
 };
-struct sja1105_info sja1105s_info = {
+
+const struct sja1105_info sja1105s_info = {
 	.device_id		= SJA1105QS_DEVICE_ID,
 	.part_no		= SJA1105S_PART_NO,
 	.static_ops		= sja1105s_table_ops,
 	.dyn_ops		= sja1105pqrs_dyn_ops,
 	.regs			= &sja1105pqrs_regs,
 	.qinq_tpid		= ETH_P_8021AD,
+	.can_limit_mcast_flood	= true,
 	.ptp_ts_bits		= 32,
 	.ptpegr_ts_bytes	= 8,
 	.num_cbs_shapers	= SJA1105PQRS_MAX_CBS_COUNT,

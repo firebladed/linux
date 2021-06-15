@@ -497,7 +497,7 @@ config SCSI_HPTIOP
 
 config SCSI_BUSLOGIC
 	tristate "BusLogic SCSI support"
-	depends on (PCI || ISA) && SCSI && ISA_DMA_API && VIRT_TO_BUS
+	depends on PCI && SCSI && VIRT_TO_BUS
 	help
 	  This is support for BusLogic MultiMaster and FlashPoint SCSI Host
 	  Adapters. Consult the SCSI-HOWTO, available from
@@ -668,20 +668,6 @@ config SCSI_FDOMAIN_ISA
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called fdomain_isa.
-
-config SCSI_GDTH
-	tristate "Intel/ICP (former GDT SCSI Disk Array) RAID Controller support"
-	depends on PCI && SCSI
-	help
-	  Formerly called GDT SCSI Disk Array Controller Support.
-
-	  This is a driver for RAID/SCSI Disk Array Controllers (EISA/ISA/PCI) 
-	  manufactured by Intel Corporation/ICP vortex GmbH. It is documented
-	  in the kernel source in <file:drivers/scsi/gdth.c> and
-	  <file:drivers/scsi/gdth.h>.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called gdth.
 
 config SCSI_ISCI
 	tristate "Intel(R) C600 Series Chipset SAS Controller"
@@ -1154,10 +1140,12 @@ source "drivers/scsi/qedf/Kconfig"
 config SCSI_LPFC
 	tristate "Emulex LightPulse Fibre Channel Support"
 	depends on PCI && SCSI
+	depends on CPU_FREQ
 	depends on SCSI_FC_ATTRS
 	depends on NVME_TARGET_FC || NVME_TARGET_FC=n
 	depends on NVME_FC || NVME_FC=n
 	select CRC_T10DIF
+	select IRQ_POLL
 	help
           This lpfc driver supports the Emulex LightPulse
           Family of Fibre Channel PCI host adapters.
@@ -1181,6 +1169,7 @@ config SCSI_SIM710
 config SCSI_DC395x
 	tristate "Tekram DC395(U/UW/F) and DC315(U) SCSI support"
 	depends on PCI && SCSI
+	select SCSI_SPI_ATTRS
 	help
 	  This driver supports PCI SCSI host adapters based on the ASIC
 	  TRM-S1040 chip, e.g Tekram DC395(U/UW/F) and DC315(U) variants.
@@ -1469,14 +1458,19 @@ config SCSI_SUNESP
 	  module will be called sun_esp.
 
 config ZFCP
-	tristate "FCP host bus adapter driver for IBM eServer zSeries"
+	tristate "FCP host bus adapter driver for IBM mainframes"
 	depends on S390 && QDIO && SCSI
 	depends on SCSI_FC_ATTRS
 	help
-          If you want to access SCSI devices attached to your IBM eServer
-          zSeries by means of Fibre Channel interfaces say Y.
-          For details please refer to the documentation provided by IBM at
-          <http://oss.software.ibm.com/developerworks/opensource/linux390>
+	  If you want to access SCSI devices attached to your IBM mainframe by
+	  means of Fibre Channel Protocol host bus adapters say Y.
+
+	  Supported HBAs include different models of the FICON Express and FCP
+	  Express I/O cards.
+
+	  For a more complete list, and for more details about setup and
+	  operation refer to the IBM publication "Device Drivers, Features, and
+	  Commands", SC33-8411.
 
           This driver is also available as a module. This module will be
           called zfcp. If you want to compile it as a module, say M here

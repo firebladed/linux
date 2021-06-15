@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/hw_random.h>
 #include <linux/delay.h>
+#include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
@@ -29,8 +30,7 @@
 #include <linux/of_address.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
-
-#include <asm/io.h>
+#include <linux/io.h>
 
 #define RNG_REG_STATUS_RDY			(1 << 0)
 
@@ -243,7 +243,6 @@ static struct omap_rng_pdata omap2_rng_pdata = {
 	.cleanup	= omap2_rng_cleanup,
 };
 
-#if defined(CONFIG_OF)
 static inline u32 omap4_rng_data_present(struct omap_rng_dev *priv)
 {
 	return omap_rng_read(priv, RNG_STATUS_REG) & RNG_REG_STATUS_RDY;
@@ -358,7 +357,7 @@ static struct omap_rng_pdata eip76_rng_pdata = {
 	.cleanup	= omap4_rng_cleanup,
 };
 
-static const struct of_device_id omap_rng_of_match[] = {
+static const struct of_device_id omap_rng_of_match[] __maybe_unused = {
 		{
 			.compatible	= "ti,omap2-rng",
 			.data		= &omap2_rng_pdata,
@@ -378,16 +377,13 @@ MODULE_DEVICE_TABLE(of, omap_rng_of_match);
 static int of_get_omap_rng_device_details(struct omap_rng_dev *priv,
 					  struct platform_device *pdev)
 {
-	const struct of_device_id *match;
 	struct device *dev = &pdev->dev;
 	int irq, err;
 
-	match = of_match_device(of_match_ptr(omap_rng_of_match), dev);
-	if (!match) {
-		dev_err(dev, "no compatible OF match\n");
-		return -EINVAL;
-	}
-	priv->pdata = match->data;
+	priv->pdata = of_device_get_match_data(dev);
+	if (!priv->pdata)
+		return -ENODEV;
+
 
 	if (of_device_is_compatible(dev->of_node, "ti,omap4-rng") ||
 	    of_device_is_compatible(dev->of_node, "inside-secure,safexcel-eip76")) {
@@ -418,13 +414,6 @@ static int of_get_omap_rng_device_details(struct omap_rng_dev *priv,
 	}
 	return 0;
 }
-#else
-static int of_get_omap_rng_device_details(struct omap_rng_dev *omap_rng,
-					  struct platform_device *pdev)
-{
-	return -EINVAL;
-}
-#endif
 
 static int get_omap_rng_device_details(struct omap_rng_dev *omap_rng)
 {

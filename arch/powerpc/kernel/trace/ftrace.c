@@ -68,13 +68,13 @@ ftrace_modify_code(unsigned long ip, struct ppc_inst old, struct ppc_inst new)
 	 */
 
 	/* read the text we want to modify */
-	if (probe_kernel_read_inst(&replaced, (void *)ip))
+	if (copy_inst_from_kernel_nofault(&replaced, (void *)ip))
 		return -EFAULT;
 
 	/* Make sure it is what we expect it to be */
 	if (!ppc_inst_equal(replaced, old)) {
-		pr_err("%p: replaced (%#x) != old (%#x)",
-		(void *)ip, ppc_inst_val(replaced), ppc_inst_val(old));
+		pr_err("%p: replaced (%s) != old (%s)",
+		(void *)ip, ppc_inst_as_str(replaced), ppc_inst_as_str(old));
 		return -EINVAL;
 	}
 
@@ -130,14 +130,14 @@ __ftrace_make_nop(struct module *mod,
 	struct ppc_inst op, pop;
 
 	/* read where this goes */
-	if (probe_kernel_read_inst(&op, (void *)ip)) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)ip)) {
 		pr_err("Fetching opcode failed.\n");
 		return -EFAULT;
 	}
 
 	/* Make sure that that this is still a 24bit jump */
 	if (!is_bl_op(op)) {
-		pr_err("Not expected bl: opcode is %x\n", ppc_inst_val(op));
+		pr_err("Not expected bl: opcode is %s\n", ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 
@@ -164,7 +164,7 @@ __ftrace_make_nop(struct module *mod,
 	/* When using -mkernel_profile there is no load to jump over */
 	pop = ppc_inst(PPC_INST_NOP);
 
-	if (probe_kernel_read_inst(&op, (void *)(ip - 4))) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)(ip - 4))) {
 		pr_err("Fetching instruction at %lx failed.\n", ip - 4);
 		return -EFAULT;
 	}
@@ -172,8 +172,8 @@ __ftrace_make_nop(struct module *mod,
 	/* We expect either a mflr r0, or a std r0, LRSAVE(r1) */
 	if (!ppc_inst_equal(op, ppc_inst(PPC_INST_MFLR)) &&
 	    !ppc_inst_equal(op, ppc_inst(PPC_INST_STD_LR))) {
-		pr_err("Unexpected instruction %08x around bl _mcount\n",
-		       ppc_inst_val(op));
+		pr_err("Unexpected instruction %s around bl _mcount\n",
+		       ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 #else
@@ -197,13 +197,13 @@ __ftrace_make_nop(struct module *mod,
 	 * Check what is in the next instruction. We can see ld r2,40(r1), but
 	 * on first pass after boot we will see mflr r0.
 	 */
-	if (probe_kernel_read_inst(&op, (void *)(ip + 4))) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)(ip + 4))) {
 		pr_err("Fetching op failed.\n");
 		return -EFAULT;
 	}
 
 	if (!ppc_inst_equal(op,  ppc_inst(PPC_INST_LD_TOC))) {
-		pr_err("Expected %08x found %08x\n", PPC_INST_LD_TOC, ppc_inst_val(op));
+		pr_err("Expected %08x found %s\n", PPC_INST_LD_TOC, ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 #endif /* CONFIG_MPROFILE_KERNEL */
@@ -231,7 +231,7 @@ __ftrace_make_nop(struct module *mod,
 
 	/* Make sure that that this is still a 24bit jump */
 	if (!is_bl_op(op)) {
-		pr_err("Not expected bl: opcode is %x\n", ppc_inst_val(op));
+		pr_err("Not expected bl: opcode is %s\n", ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 
@@ -349,7 +349,7 @@ static int setup_mcount_compiler_tramp(unsigned long tramp)
 			return -1;
 
 	/* New trampoline -- read where this goes */
-	if (probe_kernel_read_inst(&op, (void *)tramp)) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)tramp)) {
 		pr_debug("Fetching opcode failed.\n");
 		return -1;
 	}
@@ -399,14 +399,14 @@ static int __ftrace_make_nop_kernel(struct dyn_ftrace *rec, unsigned long addr)
 	struct ppc_inst op;
 
 	/* Read where this goes */
-	if (probe_kernel_read_inst(&op, (void *)ip)) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)ip)) {
 		pr_err("Fetching opcode failed.\n");
 		return -EFAULT;
 	}
 
 	/* Make sure that that this is still a 24bit jump */
 	if (!is_bl_op(op)) {
-		pr_err("Not expected bl: opcode is %x\n", ppc_inst_val(op));
+		pr_err("Not expected bl: opcode is %s\n", ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 
@@ -526,15 +526,15 @@ __ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr)
 	struct module *mod = rec->arch.mod;
 
 	/* read where this goes */
-	if (probe_kernel_read_inst(op, ip))
+	if (copy_inst_from_kernel_nofault(op, ip))
 		return -EFAULT;
 
-	if (probe_kernel_read_inst(op + 1, ip + 4))
+	if (copy_inst_from_kernel_nofault(op + 1, ip + 4))
 		return -EFAULT;
 
 	if (!expected_nop_sequence(ip, op[0], op[1])) {
-		pr_err("Unexpected call sequence at %p: %x %x\n",
-		ip, ppc_inst_val(op[0]), ppc_inst_val(op[1]));
+		pr_err("Unexpected call sequence at %p: %s %s\n",
+		ip, ppc_inst_as_str(op[0]), ppc_inst_as_str(op[1]));
 		return -EINVAL;
 	}
 
@@ -592,12 +592,12 @@ __ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr)
 	unsigned long ip = rec->ip;
 
 	/* read where this goes */
-	if (probe_kernel_read_inst(&op, (void *)ip))
+	if (copy_inst_from_kernel_nofault(&op, (void *)ip))
 		return -EFAULT;
 
 	/* It should be pointing to a nop */
 	if (!ppc_inst_equal(op,  ppc_inst(PPC_INST_NOP))) {
-		pr_err("Expected NOP but have %x\n", ppc_inst_val(op));
+		pr_err("Expected NOP but have %s\n", ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 
@@ -648,13 +648,13 @@ static int __ftrace_make_call_kernel(struct dyn_ftrace *rec, unsigned long addr)
 	}
 
 	/* Make sure we have a nop */
-	if (probe_kernel_read_inst(&op, ip)) {
+	if (copy_inst_from_kernel_nofault(&op, ip)) {
 		pr_err("Unable to read ftrace location %p\n", ip);
 		return -EFAULT;
 	}
 
 	if (!ppc_inst_equal(op, ppc_inst(PPC_INST_NOP))) {
-		pr_err("Unexpected call sequence at %p: %x\n", ip, ppc_inst_val(op));
+		pr_err("Unexpected call sequence at %p: %s\n", ip, ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 
@@ -726,14 +726,14 @@ __ftrace_modify_call(struct dyn_ftrace *rec, unsigned long old_addr,
 	}
 
 	/* read where this goes */
-	if (probe_kernel_read_inst(&op, (void *)ip)) {
+	if (copy_inst_from_kernel_nofault(&op, (void *)ip)) {
 		pr_err("Fetching opcode failed.\n");
 		return -EFAULT;
 	}
 
 	/* Make sure that that this is still a 24bit jump */
 	if (!is_bl_op(op)) {
-		pr_err("Not expected bl: opcode is %x\n", ppc_inst_val(op));
+		pr_err("Not expected bl: opcode is %s\n", ppc_inst_as_str(op));
 		return -EINVAL;
 	}
 

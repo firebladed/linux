@@ -1,36 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Universal Flash Storage Host controller driver
- *
- * This code is based on drivers/scsi/ufs/ufs.h
  * Copyright (C) 2011-2013 Samsung India Software Operations
  *
  * Authors:
  *	Santosh Yaraganavi <santosh.sy@samsung.com>
  *	Vinayak Holikatti <h.vinayak@samsung.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * See the COPYING file in the top-level directory or visit
- * <http://www.gnu.org/licenses/gpl-2.0.html>
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * This program is provided "AS IS" and "WITH ALL FAULTS" and
- * without warranty of any kind. You are solely responsible for
- * determining the appropriateness of using and distributing
- * the program and assume all risks associated with your exercise
- * of rights with respect to the program, including but not limited
- * to infringement of third party rights, the risks and costs of
- * program errors, damage to or loss of data, programs or equipment,
- * and unavailability or interruption of operations. Under no
- * circumstances will the contributor of this Program be liable for
- * any damages of any kind arising from your use or distribution of
- * this program.
  */
 
 #ifndef _UFS_H
@@ -63,6 +38,7 @@
 #define UFS_UPIU_MAX_UNIT_NUM_ID	0x7F
 #define UFS_MAX_LUNS		(SCSI_W_LUN_BASE + UFS_UPIU_MAX_UNIT_NUM_ID)
 #define UFS_UPIU_WLUN_ID	(1 << 7)
+#define UFS_RPMB_UNIT		0xC4
 
 /* WriteBooster buffer is available only for the logical unit from 0 to 7 */
 #define UFS_UPIU_MAX_WB_LUN_ID	8
@@ -198,16 +174,6 @@ enum desc_idn {
 enum desc_header_offset {
 	QUERY_DESC_LENGTH_OFFSET	= 0x00,
 	QUERY_DESC_DESC_TYPE_OFFSET	= 0x01,
-};
-
-enum ufs_desc_def_size {
-	QUERY_DESC_DEVICE_DEF_SIZE		= 0x59,
-	QUERY_DESC_CONFIGURATION_DEF_SIZE	= 0x90,
-	QUERY_DESC_UNIT_DEF_SIZE		= 0x2D,
-	QUERY_DESC_INTERCONNECT_DEF_SIZE	= 0x06,
-	QUERY_DESC_GEOMETRY_DEF_SIZE		= 0x48,
-	QUERY_DESC_POWER_DEF_SIZE		= 0x62,
-	QUERY_DESC_HEALTH_DEF_SIZE		= 0x25,
 };
 
 /* Unit descriptor parameters offsets in bytes*/
@@ -364,7 +330,6 @@ enum {
 	UFS_DEV_WRITE_BOOSTER_SUP	= BIT(8),
 };
 
-#define POWER_DESC_MAX_SIZE			0x62
 #define POWER_DESC_MAX_ACTV_ICC_LVLS		16
 
 /* Attribute  bActiveICCLevel parameter bit masks definitions */
@@ -383,8 +348,14 @@ enum power_desc_param_offset {
 
 /* Exception event mask values */
 enum {
-	MASK_EE_STATUS		= 0xFFFF,
-	MASK_EE_URGENT_BKOPS	= (1 << 2),
+	MASK_EE_STATUS			= 0xFFFF,
+	MASK_EE_DYNCAP_EVENT		= BIT(0),
+	MASK_EE_SYSPOOL_EVENT		= BIT(1),
+	MASK_EE_URGENT_BKOPS		= BIT(2),
+	MASK_EE_TOO_HIGH_TEMP		= BIT(3),
+	MASK_EE_TOO_LOW_TEMP		= BIT(4),
+	MASK_EE_WRITEBOOSTER_EVENT	= BIT(5),
+	MASK_EE_PERFORMANCE_THROTTLING	= BIT(6),
 };
 
 /* Background operation status */
@@ -476,6 +447,7 @@ enum ufs_dev_pwr_mode {
 	UFS_ACTIVE_PWR_MODE	= 1,
 	UFS_SLEEP_PWR_MODE	= 2,
 	UFS_POWERDOWN_PWR_MODE	= 3,
+	UFS_DEEPSLEEP_PWR_MODE	= 4,
 };
 
 #define UFS_WB_BUF_REMAIN_PERCENT(val) ((val) / 10)
@@ -546,6 +518,7 @@ struct ufs_query_res {
 struct ufs_vreg {
 	struct regulator *reg;
 	const char *name;
+	bool always_on;
 	bool enabled;
 	int min_uV;
 	int max_uV;
@@ -560,22 +533,42 @@ struct ufs_vreg_info {
 };
 
 struct ufs_dev_info {
-	bool f_power_on_wp_en;
+	bool	f_power_on_wp_en;
 	/* Keeps information if any of the LU is power on write protected */
-	bool is_lu_power_on_wp;
+	bool	is_lu_power_on_wp;
 	/* Maximum number of general LU supported by the UFS device */
-	u8 max_lu_supported;
-	u8 wb_dedicated_lu;
-	u16 wmanufacturerid;
+	u8	max_lu_supported;
+	u16	wmanufacturerid;
 	/*UFS device Product Name */
-	u8 *model;
-	u16 wspecversion;
-	u32 clk_gating_wait_us;
-	u32 d_ext_ufs_feature_sup;
-	u8 b_wb_buffer_type;
-	u32 d_wb_alloc_units;
-	bool b_rpm_dev_flush_capable;
-	u8 b_presrv_uspc_en;
+	u8	*model;
+	u16	wspecversion;
+	u32	clk_gating_wait_us;
+
+	/* UFS WB related flags */
+	bool    wb_enabled;
+	bool    wb_buf_flush_enabled;
+	u8	wb_dedicated_lu;
+	u8      wb_buffer_type;
+
+	bool	b_rpm_dev_flush_capable;
+	u8	b_presrv_uspc_en;
+};
+
+/*
+ * This enum is used in string mapping in include/trace/events/ufs.h.
+ */
+enum ufs_trace_str_t {
+	UFS_CMD_SEND, UFS_CMD_COMP, UFS_DEV_COMP,
+	UFS_QUERY_SEND, UFS_QUERY_COMP, UFS_QUERY_ERR,
+	UFS_TM_SEND, UFS_TM_COMP, UFS_TM_ERR
+};
+
+/*
+ * Transaction Specific Fields (TSF) type in the UPIU package, this enum is
+ * used in include/trace/events/ufs.h for UFS command trace.
+ */
+enum ufs_trace_tsf_t {
+	UFS_TSF_CDB, UFS_TSF_OSF, UFS_TSF_TM_INPUT, UFS_TSF_TM_OUTPUT
 };
 
 /**
@@ -585,13 +578,15 @@ struct ufs_dev_info {
  * @return: true if the lun has a matching unit descriptor, false otherwise
  */
 static inline bool ufs_is_valid_unit_desc_lun(struct ufs_dev_info *dev_info,
-		u8 lun)
+		u8 lun, u8 param_offset)
 {
 	if (!dev_info || !dev_info->max_lu_supported) {
 		pr_err("Max General LU supported by UFS isn't initialized\n");
 		return false;
 	}
-
+	/* WB is available only for the logical unit from 0 to 7 */
+	if (param_offset == UNIT_DESC_PARAM_WB_BUF_ALLOC_UNITS)
+		return lun < UFS_UPIU_MAX_WB_LUN_ID;
 	return lun == UFS_UPIU_RPMB_WLUN || (lun < dev_info->max_lu_supported);
 }
 

@@ -176,18 +176,11 @@ static int framebuffer_check(struct drm_device *dev,
 	int i;
 
 	/* check if the format is supported at all */
-	info = __drm_format_info(r->pixel_format);
-	if (!info) {
-		struct drm_format_name_buf format_name;
-
-		DRM_DEBUG_KMS("bad framebuffer format %s\n",
-			      drm_get_format_name(r->pixel_format,
-						  &format_name));
+	if (!__drm_format_info(r->pixel_format)) {
+		DRM_DEBUG_KMS("bad framebuffer format %p4cc\n",
+			      &r->pixel_format);
 		return -EINVAL;
 	}
-
-	/* now let the driver pick its own format info */
-	info = drm_get_format_info(dev, r);
 
 	if (r->width == 0) {
 		DRM_DEBUG_KMS("bad framebuffer width %u\n", r->width);
@@ -198,6 +191,9 @@ static int framebuffer_check(struct drm_device *dev,
 		DRM_DEBUG_KMS("bad framebuffer height %u\n", r->height);
 		return -EINVAL;
 	}
+
+	/* now let the driver pick its own format info */
+	info = drm_get_format_info(dev, r);
 
 	for (i = 0; i < info->num_planes; i++) {
 		unsigned int width = fb_plane_width(r->width, info, i);
@@ -553,7 +549,7 @@ out:
 }
 
 /**
- * drm_mode_getfb2 - get extended FB info
+ * drm_mode_getfb2_ioctl - get extended FB info
  * @dev: drm device for the ioctl
  * @data: data pointer for the ioctl
  * @file_priv: drm file for the ioctl call
@@ -1110,6 +1106,7 @@ void drm_framebuffer_remove(struct drm_framebuffer *fb)
 	if (drm_framebuffer_read_refcount(fb) > 1) {
 		if (drm_drv_uses_atomic_modeset(dev)) {
 			int ret = atomic_remove_fb(fb);
+
 			WARN(ret, "atomic remove_fb failed with %i\n", ret);
 		} else
 			legacy_remove_fb(fb);
@@ -1160,14 +1157,12 @@ EXPORT_SYMBOL(drm_framebuffer_plane_height);
 void drm_framebuffer_print_info(struct drm_printer *p, unsigned int indent,
 				const struct drm_framebuffer *fb)
 {
-	struct drm_format_name_buf format_name;
 	unsigned int i;
 
 	drm_printf_indent(p, indent, "allocated by = %s\n", fb->comm);
 	drm_printf_indent(p, indent, "refcount=%u\n",
 			  drm_framebuffer_read_refcount(fb));
-	drm_printf_indent(p, indent, "format=%s\n",
-			  drm_get_format_name(fb->format->format, &format_name));
+	drm_printf_indent(p, indent, "format=%p4cc\n", &fb->format->format);
 	drm_printf_indent(p, indent, "modifier=0x%llx\n", fb->modifier);
 	drm_printf_indent(p, indent, "size=%ux%u\n", fb->width, fb->height);
 	drm_printf_indent(p, indent, "layers:\n");
