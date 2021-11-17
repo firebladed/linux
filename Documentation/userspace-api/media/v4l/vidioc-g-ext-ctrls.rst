@@ -221,6 +221,18 @@ still cause this situation.
       - ``p_vp8_frame``
       - A pointer to a struct :c:type:`v4l2_ctrl_vp8_frame`. Valid if this control is
         of type ``V4L2_CTRL_TYPE_VP8_FRAME``.
+    * - struct :c:type:`v4l2_ctrl_mpeg2_sequence` *
+      - ``p_mpeg2_sequence``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg2_sequence`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_MPEG2_SEQUENCE``.
+    * - struct :c:type:`v4l2_ctrl_mpeg2_picture` *
+      - ``p_mpeg2_picture``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg2_picture`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_MPEG2_PICTURE``.
+    * - struct :c:type:`v4l2_ctrl_mpeg2_quantisation` *
+      - ``p_mpeg2_quantisation``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg2_quantisation`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_MPEG2_QUANTISATION``.
     * - struct :c:type:`v4l2_ctrl_hdr10_cll_info` *
       - ``p_hdr10_cll``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_cll_info`. Valid if this control is
@@ -458,3 +470,6 @@ EACCES
 
     Or the ``which`` field was set to ``V4L2_CTRL_WHICH_REQUEST_VAL`` but the
     device does not support requests.
+
+    Or if there is an attempt to set an inactive control and the driver is
+    not capable of caching the new value until the control is active again.

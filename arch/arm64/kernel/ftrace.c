@@ -15,6 +15,7 @@
 #include <asm/debug-monitors.h>
 #include <asm/ftrace.h>
 #include <asm/insn.h>
+#include <asm/patching.h>
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 /*
@@ -234,11 +235,6 @@ void arch_ftrace_update_code(int command)
 {
 	command |= FTRACE_MAY_SLEEP;
 	ftrace_modify_all_code(command);
-}
-
-int __init ftrace_dyn_arch_init(void)
-{
-	return 0;
 }
 #endif /* CONFIG_DYNAMIC_FTRACE */
 
