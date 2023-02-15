@@ -28,15 +28,13 @@
 #include "include/logger_interface.h"
 
 #include "../dce110/irq_service_dce110.h"
+#include "irq_service_dcn201.h"
 
 #include "dcn/dcn_2_0_3_offset.h"
 #include "dcn/dcn_2_0_3_sh_mask.h"
 
 #include "cyan_skillfish_ip_offset.h"
 #include "soc15_hw_ip.h"
-
-#include "irq_service_dcn201.h"
-
 #include "ivsrcid/dcn/irqsrcs_dcn_1_0.h"
 
 enum dc_irq_source to_dal_irq_source_dcn201(
@@ -80,7 +78,6 @@ enum dc_irq_source to_dal_irq_source_dcn201(
 	default:
 		return DC_IRQ_SOURCE_INVALID;
 	}
-	return DC_IRQ_SOURCE_INVALID;
 }
 
 static bool hpd_ack(

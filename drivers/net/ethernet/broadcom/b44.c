@@ -1680,7 +1680,7 @@ static void b44_get_stats64(struct net_device *dev,
 	unsigned int start;
 
 	do {
-		start = u64_stats_fetch_begin_irq(&hwstat->syncp);
+		start = u64_stats_fetch_begin(&hwstat->syncp);
 
 		/* Convert HW stats into rtnl_link_stats64 stats. */
 		nstat->rx_packets = hwstat->rx_pkts;
@@ -1714,7 +1714,7 @@ static void b44_get_stats64(struct net_device *dev,
 		/* Carrier lost counter seems to be broken for some devices */
 		nstat->tx_carrier_errors = hwstat->tx_carrier_lost;
 #endif
-	} while (u64_stats_fetch_retry_irq(&hwstat->syncp, start));
+	} while (u64_stats_fetch_retry(&hwstat->syncp, start));
 
 }
 
@@ -1790,13 +1790,13 @@ static void b44_get_drvinfo (struct net_device *dev, struct ethtool_drvinfo *inf
 	struct b44 *bp = netdev_priv(dev);
 	struct ssb_bus *bus = bp->sdev->bus;
 
-	strlcpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
+	strscpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
 	switch (bus->bustype) {
 	case SSB_BUSTYPE_PCI:
-		strlcpy(info->bus_info, pci_name(bus->host_pci), sizeof(info->bus_info));
+		strscpy(info->bus_info, pci_name(bus->host_pci), sizeof(info->bus_info));
 		break;
 	case SSB_BUSTYPE_SSB:
-		strlcpy(info->bus_info, "SSB", sizeof(info->bus_info));
+		strscpy(info->bus_info, "SSB", sizeof(info->bus_info));
 		break;
 	case SSB_BUSTYPE_PCMCIA:
 	case SSB_BUSTYPE_SDIO:
@@ -1961,7 +1961,9 @@ static int b44_set_link_ksettings(struct net_device *dev,
 }
 
 static void b44_get_ringparam(struct net_device *dev,
-			      struct ethtool_ringparam *ering)
+			      struct ethtool_ringparam *ering,
+			      struct kernel_ethtool_ringparam *kernel_ering,
+			      struct netlink_ext_ack *extack)
 {
 	struct b44 *bp = netdev_priv(dev);
 
@@ -1972,7 +1974,9 @@ static void b44_get_ringparam(struct net_device *dev,
 }
 
 static int b44_set_ringparam(struct net_device *dev,
-			     struct ethtool_ringparam *ering)
+			     struct ethtool_ringparam *ering,
+			     struct kernel_ethtool_ringparam *kernel_ering,
+			     struct netlink_ext_ack *extack)
 {
 	struct b44 *bp = netdev_priv(dev);
 
@@ -2078,12 +2082,12 @@ static void b44_get_ethtool_stats(struct net_device *dev,
 	do {
 		data_src = &hwstat->tx_good_octets;
 		data_dst = data;
-		start = u64_stats_fetch_begin_irq(&hwstat->syncp);
+		start = u64_stats_fetch_begin(&hwstat->syncp);
 
 		for (i = 0; i < ARRAY_SIZE(b44_gstrings); i++)
 			*data_dst++ = *data_src++;
 
-	} while (u64_stats_fetch_retry_irq(&hwstat->syncp, start));
+	} while (u64_stats_fetch_retry(&hwstat->syncp, start));
 }
 
 static void b44_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
@@ -2371,7 +2375,7 @@ static int b44_init_one(struct ssb_device *sdev,
 	bp->tx_pending = B44_DEF_TX_RING_PENDING;
 
 	dev->netdev_ops = &b44_netdev_ops;
-	netif_napi_add(dev, &bp->napi, b44_poll, 64);
+	netif_napi_add(dev, &bp->napi, b44_poll);
 	dev->watchdog_timeo = B44_TX_TIMEOUT;
 	dev->min_mtu = B44_MIN_MTU;
 	dev->max_mtu = B44_MAX_MTU;

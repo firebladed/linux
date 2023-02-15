@@ -217,6 +217,8 @@ static int qcom_stats_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, root);
 
+	device_set_pm_not_required(&pdev->dev);
+
 	return 0;
 }
 
@@ -237,6 +239,23 @@ static const struct stats_config rpm_data = {
 	.subsystem_stats_in_smem = false,
 };
 
+/* Older RPM firmwares have the stats at a fixed offset instead */
+static const struct stats_config rpm_data_dba0 = {
+	.stats_offset = 0xdba0,
+	.num_records = 2,
+	.appended_stats_avail = true,
+	.dynamic_offset = false,
+	.subsystem_stats_in_smem = false,
+};
+
+static const struct stats_config rpmh_data_sdm845 = {
+	.stats_offset = 0x48,
+	.num_records = 2,
+	.appended_stats_avail = false,
+	.dynamic_offset = false,
+	.subsystem_stats_in_smem = true,
+};
+
 static const struct stats_config rpmh_data = {
 	.stats_offset = 0x48,
 	.num_records = 3,
@@ -246,8 +265,13 @@ static const struct stats_config rpmh_data = {
 };
 
 static const struct of_device_id qcom_stats_table[] = {
+	{ .compatible = "qcom,apq8084-rpm-stats", .data = &rpm_data_dba0 },
+	{ .compatible = "qcom,msm8226-rpm-stats", .data = &rpm_data_dba0 },
+	{ .compatible = "qcom,msm8916-rpm-stats", .data = &rpm_data_dba0 },
+	{ .compatible = "qcom,msm8974-rpm-stats", .data = &rpm_data_dba0 },
 	{ .compatible = "qcom,rpm-stats", .data = &rpm_data },
 	{ .compatible = "qcom,rpmh-stats", .data = &rpmh_data },
+	{ .compatible = "qcom,sdm845-rpmh-stats", .data = &rpmh_data_sdm845 },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, qcom_stats_table);

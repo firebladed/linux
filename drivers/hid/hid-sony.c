@@ -368,7 +368,7 @@ static const unsigned int buzz_keymap[] = {
 };
 
 /* The Navigation controller is a partial DS3 and uses the same HID report
- * and hence the same keymap indices, however not not all axes/buttons
+ * and hence the same keymap indices, however not all axes/buttons
  * are physically present. We use the same axis and button mapping as
  * the DS3, which uses the Linux gamepad spec.
  */
@@ -2355,11 +2355,13 @@ static void motion_send_output_report(struct sony_sc *sc)
 	hid_hw_output_report(hdev, (u8 *)report, MOTION_REPORT_0x02_SIZE);
 }
 
+#ifdef CONFIG_SONY_FF
 static inline void sony_send_output_report(struct sony_sc *sc)
 {
 	if (sc->send_output_report)
 		sc->send_output_report(sc);
 }
+#endif
 
 static void sony_state_worker(struct work_struct *work)
 {
@@ -3000,7 +3002,6 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	sc->quirks = quirks;
 	hid_set_drvdata(hdev, sc);
 	sc->hdev = hdev;
-	usbdev = to_usb_device(sc->hdev->dev.parent->parent);
 
 	ret = hid_parse(hdev);
 	if (ret) {
@@ -3038,14 +3039,23 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	 */
 	if (!(hdev->claimed & HID_CLAIMED_INPUT)) {
 		hid_err(hdev, "failed to claim input\n");
-		hid_hw_stop(hdev);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto err;
 	}
 
 	if (sc->quirks & (GHL_GUITAR_PS3WIIU | GHL_GUITAR_PS4)) {
+		if (!hid_is_usb(hdev)) {
+			ret = -EINVAL;
+			goto err;
+		}
+
+		usbdev = to_usb_device(sc->hdev->dev.parent->parent);
+
 		sc->ghl_urb = usb_alloc_urb(0, GFP_ATOMIC);
-		if (!sc->ghl_urb)
-			return -ENOMEM;
+		if (!sc->ghl_urb) {
+			ret = -ENOMEM;
+			goto err;
+		}
 
 		if (sc->quirks & GHL_GUITAR_PS3WIIU)
 			ret = ghl_init_urb(sc, usbdev, ghl_ps3wiiu_magic_data,
@@ -3055,7 +3065,7 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 							   ARRAY_SIZE(ghl_ps4_magic_data));
 		if (ret) {
 			hid_err(hdev, "error preparing URB\n");
-			return ret;
+			goto err;
 		}
 
 		timer_setup(&sc->ghl_poke_timer, ghl_magic_poke, 0);
@@ -3063,6 +3073,10 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 			  jiffies + GHL_GUITAR_POKE_INTERVAL*HZ);
 	}
 
+	return ret;
+
+err:
+	hid_hw_stop(hdev);
 	return ret;
 }
 

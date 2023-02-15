@@ -108,7 +108,12 @@ EXPORT_SYMBOL(mdiobus_unregister_device);
 
 struct phy_device *mdiobus_get_phy(struct mii_bus *bus, int addr)
 {
-	struct mdio_device *mdiodev = bus->mdio_map[addr];
+	struct mdio_device *mdiodev;
+
+	if (addr < 0 || addr >= ARRAY_SIZE(bus->mdio_map))
+		return NULL;
+
+	mdiodev = bus->mdio_map[addr];
 
 	if (!mdiodev)
 		return NULL;
@@ -176,9 +181,11 @@ static void mdiobus_release(struct device *d)
 {
 	struct mii_bus *bus = to_mii_bus(d);
 
-	BUG_ON(bus->state != MDIOBUS_RELEASED &&
-	       /* for compatibility with error handling in drivers */
-	       bus->state != MDIOBUS_ALLOCATED);
+	WARN(bus->state != MDIOBUS_RELEASED &&
+	     /* for compatibility with error handling in drivers */
+	     bus->state != MDIOBUS_ALLOCATED,
+	     "%s: not in RELEASED or ALLOCATED state\n",
+	     bus->id);
 	kfree(bus);
 }
 
@@ -230,7 +237,7 @@ static ssize_t mdio_bus_stat_field_show(struct device *dev,
 		val = mdio_bus_get_stat(&bus->stats[sattr->addr],
 					sattr->field_offset);
 
-	return sprintf(buf, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static ssize_t mdio_bus_device_stat_field_show(struct device *dev,
@@ -249,7 +256,7 @@ static ssize_t mdio_bus_device_stat_field_show(struct device *dev,
 
 	val = mdio_bus_get_stat(&bus->stats[addr], sattr->field_offset);
 
-	return sprintf(buf, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 #define MDIO_BUS_STATS_ATTR_DECL(field, file)				\
@@ -460,6 +467,9 @@ static void of_mdiobus_link_mdiodev(struct mii_bus *bus,
 
 		if (addr == mdiodev->addr) {
 			device_set_node(dev, of_fwnode_handle(child));
+			/* The refcount on "child" is passed to the mdio
+			 * device. Do _not_ use of_node_put(child) here.
+			 */
 			return;
 		}
 	}
@@ -529,8 +539,9 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 		bus->parent->of_node->fwnode.flags |=
 					FWNODE_FLAG_NEEDS_CHILD_BOUND_ON_ADD;
 
-	BUG_ON(bus->state != MDIOBUS_ALLOCATED &&
-	       bus->state != MDIOBUS_UNREGISTERED);
+	WARN(bus->state != MDIOBUS_ALLOCATED &&
+	     bus->state != MDIOBUS_UNREGISTERED,
+	     "%s: not in ALLOCATED or UNREGISTERED state\n", bus->id);
 
 	bus->owner = owner;
 	bus->dev.parent = bus->parent;
@@ -577,7 +588,7 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	}
 
 	for (i = 0; i < PHY_MAX_ADDR; i++) {
-		if ((bus->phy_mask & (1 << i)) == 0) {
+		if ((bus->phy_mask & BIT(i)) == 0) {
 			struct phy_device *phydev;
 
 			phydev = mdiobus_scan(bus, i);
@@ -591,7 +602,7 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	mdiobus_setup_mdiodev_from_board_info(bus, mdiobus_create_device);
 
 	bus->state = MDIOBUS_REGISTERED;
-	pr_info("%s: probed\n", bus->name);
+	dev_dbg(&bus->dev, "probed\n");
 	return 0;
 
 error:
@@ -658,7 +669,8 @@ void mdiobus_free(struct mii_bus *bus)
 		return;
 	}
 
-	BUG_ON(bus->state != MDIOBUS_UNREGISTERED);
+	WARN(bus->state != MDIOBUS_UNREGISTERED,
+	     "%s: not in UNREGISTERED state\n", bus->id);
 	bus->state = MDIOBUS_RELEASED;
 
 	put_device(&bus->dev);
@@ -1039,7 +1051,6 @@ int __init mdio_bus_init(void)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mdio_bus_init);
 
 #if IS_ENABLED(CONFIG_PHYLIB)
 void mdio_bus_exit(void)

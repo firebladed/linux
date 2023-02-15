@@ -8,12 +8,12 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM rpcgss
 
-#if !defined(_TRACE_RPCRDMA_H) || defined(TRACE_HEADER_MULTI_READ)
+#if !defined(_TRACE_RPCGSS_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_RPCGSS_H
 
 #include <linux/tracepoint.h>
 
-#include <trace/events/sunrpc_base.h>
+#include <trace/misc/sunrpc.h>
 
 /**
  ** GSS-API related trace events

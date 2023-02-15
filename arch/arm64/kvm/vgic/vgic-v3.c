@@ -339,7 +339,7 @@ retry:
 	if (status) {
 		/* clear consumed data */
 		val &= ~(1 << bit_nr);
-		ret = kvm_write_guest_lock(kvm, ptr, &val, 1);
+		ret = vgic_write_guest_lock(kvm, ptr, &val, 1);
 		if (ret)
 			return ret;
 	}
@@ -350,26 +350,23 @@ retry:
  * The deactivation of the doorbell interrupt will trigger the
  * unmapping of the associated vPE.
  */
-static void unmap_all_vpes(struct vgic_dist *dist)
+static void unmap_all_vpes(struct kvm *kvm)
 {
-	struct irq_desc *desc;
+	struct vgic_dist *dist = &kvm->arch.vgic;
 	int i;
 
-	for (i = 0; i < dist->its_vm.nr_vpes; i++) {
-		desc = irq_to_desc(dist->its_vm.vpes[i]->irq);
-		irq_domain_deactivate_irq(irq_desc_get_irq_data(desc));
-	}
+	for (i = 0; i < dist->its_vm.nr_vpes; i++)
+		free_irq(dist->its_vm.vpes[i]->irq, kvm_get_vcpu(kvm, i));
 }
 
-static void map_all_vpes(struct vgic_dist *dist)
+static void map_all_vpes(struct kvm *kvm)
 {
-	struct irq_desc *desc;
+	struct vgic_dist *dist = &kvm->arch.vgic;
 	int i;
 
-	for (i = 0; i < dist->its_vm.nr_vpes; i++) {
-		desc = irq_to_desc(dist->its_vm.vpes[i]->irq);
-		irq_domain_activate_irq(irq_desc_get_irq_data(desc), false);
-	}
+	for (i = 0; i < dist->its_vm.nr_vpes; i++)
+		WARN_ON(vgic_v4_request_vpe_irq(kvm_get_vcpu(kvm, i),
+						dist->its_vm.vpes[i]->irq));
 }
 
 /**
@@ -394,7 +391,7 @@ int vgic_v3_save_pending_tables(struct kvm *kvm)
 	 * and enabling of the doorbells have already been done.
 	 */
 	if (kvm_vgic_global_state.has_gicv4_1) {
-		unmap_all_vpes(dist);
+		unmap_all_vpes(kvm);
 		vlpi_avail = true;
 	}
 
@@ -437,14 +434,14 @@ int vgic_v3_save_pending_tables(struct kvm *kvm)
 		else
 			val &= ~(1 << bit_nr);
 
-		ret = kvm_write_guest_lock(kvm, ptr, &val, 1);
+		ret = vgic_write_guest_lock(kvm, ptr, &val, 1);
 		if (ret)
 			goto out;
 	}
 
 out:
 	if (vlpi_avail)
-		map_all_vpes(dist);
+		map_all_vpes(kvm);
 
 	return ret;
 }
@@ -542,24 +539,24 @@ int vgic_v3_map_resources(struct kvm *kvm)
 	struct vgic_dist *dist = &kvm->arch.vgic;
 	struct kvm_vcpu *vcpu;
 	int ret = 0;
-	int c;
+	unsigned long c;
 
 	kvm_for_each_vcpu(c, vcpu, kvm) {
 		struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
 		if (IS_VGIC_ADDR_UNDEF(vgic_cpu->rd_iodev.base_addr)) {
-			kvm_debug("vcpu %d redistributor base not set\n", c);
+			kvm_debug("vcpu %ld redistributor base not set\n", c);
 			return -ENXIO;
 		}
 	}
 
 	if (IS_VGIC_ADDR_UNDEF(dist->vgic_dist_base)) {
-		kvm_err("Need to set vgic distributor addresses first\n");
+		kvm_debug("Need to set vgic distributor addresses first\n");
 		return -ENXIO;
 	}
 
 	if (!vgic_v3_check_base(kvm)) {
-		kvm_err("VGIC redist and dist frames overlap\n");
+		kvm_debug("VGIC redist and dist frames overlap\n");
 		return -EINVAL;
 	}
 
@@ -609,6 +606,24 @@ static int __init early_gicv4_enable(char *buf)
 }
 early_param("kvm-arm.vgic_v4_enable", early_gicv4_enable);
 
+static const struct midr_range broken_seis[] = {
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM_PRO),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM_PRO),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM_MAX),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM_MAX),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M2_BLIZZARD),
+	MIDR_ALL_VERSIONS(MIDR_APPLE_M2_AVALANCHE),
+	{},
+};
+
+static bool vgic_v3_broken_seis(void)
+{
+	return ((kvm_vgic_global_state.ich_vtr_el2 & ICH_VTR_SEIS_MASK) &&
+		is_midr_in_range_list(read_cpuid_id(), broken_seis));
+}
+
 /**
  * vgic_v3_probe - probe for a VGICv3 compatible interrupt controller
  * @info:	pointer to the GIC description
@@ -651,7 +666,7 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 	} else if (!PAGE_ALIGNED(info->vcpu.start)) {
 		pr_warn("GICV physical address 0x%llx not page aligned\n",
 			(unsigned long long)info->vcpu.start);
-	} else {
+	} else if (kvm_get_mode() != KVM_MODE_PROTECTED) {
 		kvm_vgic_global_state.vcpu_base = info->vcpu.start;
 		kvm_vgic_global_state.can_emulate_gicv2 = true;
 		ret = kvm_register_vgic_device(KVM_DEV_TYPE_ARM_VGIC_V2);
@@ -676,9 +691,10 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 		group1_trap = true;
 	}
 
-	if (kvm_vgic_global_state.ich_vtr_el2 & ICH_VTR_SEIS_MASK) {
-		kvm_info("GICv3 with locally generated SEI\n");
+	if (vgic_v3_broken_seis()) {
+		kvm_info("GICv3 with broken locally generated SEI\n");
 
+		kvm_vgic_global_state.ich_vtr_el2 &= ~ICH_VTR_SEIS_MASK;
 		group0_trap = true;
 		group1_trap = true;
 		if (ich_vtr_el2 & ICH_VTR_TDS_MASK)

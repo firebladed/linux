@@ -33,6 +33,7 @@
 
 #include <linux/bpf.h>
 #include <linux/etherdevice.h>
+#include <linux/filter.h>
 #include <linux/tcp.h>
 #include <linux/if_vlan.h>
 #include <linux/delay.h>
@@ -2286,9 +2287,14 @@ int mlx4_en_try_alloc_resources(struct mlx4_en_priv *priv,
 				bool carry_xdp_prog)
 {
 	struct bpf_prog *xdp_prog;
-	int i, t;
+	int i, t, ret;
 
-	mlx4_en_copy_priv(tmp, priv, prof);
+	ret = mlx4_en_copy_priv(tmp, priv, prof);
+	if (ret) {
+		en_warn(priv, "%s: mlx4_en_copy_priv() failed, return\n",
+			__func__);
+		return ret;
+	}
 
 	if (mlx4_en_alloc_resources(tmp)) {
 		en_warn(priv,
@@ -2331,11 +2337,8 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	en_dbg(DRV, priv, "Destroying netdev on port:%d\n", priv->port);
 
 	/* Unregister device - this will close the port if it was up */
-	if (priv->registered) {
-		devlink_port_type_clear(mlx4_get_devlink_port(mdev->dev,
-							      priv->port));
+	if (priv->registered)
 		unregister_netdev(dev);
-	}
 
 	if (priv->allocated)
 		mlx4_free_hwq_res(mdev->dev, &priv->res, MLX4_EN_PAGE_SIZE);
@@ -2421,10 +2424,6 @@ static int mlx4_en_hwtstamp_set(struct net_device *dev, struct ifreq *ifr)
 
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
-
-	/* reserved for future extensions */
-	if (config.flags)
-		return -EINVAL;
 
 	/* device doesn't support time stamping */
 	if (!(mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_TS))
@@ -3415,6 +3414,9 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = priv->max_mtu;
 
+	/* supports LSOv2 packets. */
+	netif_set_tso_max_size(dev, GSO_MAX_SIZE);
+
 	mdev->pndev[port] = dev;
 	mdev->upper[port] = NULL;
 
@@ -3469,6 +3471,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 				 mdev->profile.prof[priv->port].tx_ppp,
 				 mdev->profile.prof[priv->port].tx_pause);
 
+	SET_NETDEV_DEVLINK_PORT(dev,
+				mlx4_get_devlink_port(mdev->dev, priv->port));
 	err = register_netdev(dev);
 	if (err) {
 		en_err(priv, "Netdev registration failed for port %d\n", port);
@@ -3476,8 +3480,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	}
 
 	priv->registered = 1;
-	devlink_port_type_eth_set(mlx4_get_devlink_port(mdev->dev, priv->port),
-				  dev);
 
 	return 0;
 
